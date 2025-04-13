@@ -2,3 +2,4 @@ ib_insync
 gspread
 oauth2client
 pandas
+gspread_dataframe
