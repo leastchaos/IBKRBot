@@ -12,7 +12,7 @@ def setup_logger(level=logging.INFO) -> logging.Logger:
     file_handler = logging.FileHandler("ib_async.log")
     file_handler.setLevel(logging.DEBUG)  # Log everything to the file
     file_formatter = logging.Formatter(
-        "%(asctime)s - %(levelname)s - %(module)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
     file_handler.setFormatter(file_formatter)
 
