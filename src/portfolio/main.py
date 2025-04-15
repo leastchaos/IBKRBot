@@ -21,20 +21,20 @@ def update_data(
     workbook_name: str,
     position_sheet: str,
     balance_sheet: str,
-    worst_case_scenario_sheet: str,
+    scenario_sheet: str,
 ) -> None:
     try:
         if not ib.isConnected():
             connect_to_ib()
         positions_df = fetch_positions(ib) # this switches to ib.reqMarketDataType(4)
         balance_df = fetch_balance(ib)
-        worst_case_df = get_sheet_data(workbook_name, worst_case_scenario_sheet)
-        positions_df = process_positions_data(positions_df, worst_case_df)
+        scenario_df = get_sheet_data(workbook_name, scenario_sheet)
+        positions_df = process_positions_data(positions_df, scenario_df)
 
         set_sheet_data(workbook_name, position_sheet, positions_df)
         set_sheet_data(workbook_name, balance_sheet, balance_df)
     except Exception as e:
-        logger.error(f"An error occurred: {e}")
+        logger.exception(f"An error occurred: {e}")
 
     logger.info("Data update completed.")
 
@@ -54,7 +54,7 @@ def main(
     workbook_name="Portfolio Tracking",
     position_sheet="IBKRPositions",
     balance_sheet="IBKRBalances",
-    worst_case_scenario_sheet="Worst Case Scenario",
+    scenario_sheet="ScenarioPrice",
 ) -> None:
     setup_logger()
     ib = IB()
@@ -67,7 +67,7 @@ def main(
                 workbook_name,
                 position_sheet,
                 balance_sheet,
-                worst_case_scenario_sheet,
+                scenario_sheet,
             )
             wait_for_next_update(300)
 

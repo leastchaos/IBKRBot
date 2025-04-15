@@ -93,13 +93,37 @@ def determine_position_type(row: pd.Series) -> str:
     return "Unknown"
 
 
+def calculate_target_profit(row: pd.Series) -> float:
+    avg_cost = row["AvgCost"]
+    position = row["Position"]
+    target_price = row["TargetPrice"]
+    position_type = row["PositionType"]
+    strike = row["Strike"]
+    multiplier = float(row["Multiplier"]) if row["Multiplier"] else 1
+    forex_rate = row["ForexRate"]
+
+    position_cost = avg_cost * position * forex_rate
+    if position_type == "Stock":
+        return target_price * position * forex_rate - position_cost
+    if position_type == "Long Call":
+        return (target_price - strike) * multiplier * position * forex_rate - position_cost
+    if position_type == "Short Call":
+        return -position_cost
+    if position_type == "Long Put":
+        return max(strike - target_price, 0) * position * multiplier * forex_rate - position_cost
+    if position_type == "Short Put":
+        return -position_cost
+    return 0
+
+
 def process_positions_data(
-    positions_df: pd.DataFrame, worst_case_df: pd.DataFrame
+    positions_df: pd.DataFrame,
+    scenario_df: pd.DataFrame,
 ) -> pd.DataFrame:
     logger.info("Processing positions data...")
-    # Merge worst-case prices into positions_df
+    # Merge scenario prices into positions_df
     positions_df = positions_df.merge(
-        worst_case_df,
+        scenario_df,
         left_on="Symbol",
         right_on="UnderlyingSymbol",
         how="left",
@@ -114,5 +138,6 @@ def process_positions_data(
     positions_df["WorstCaseRisk"] = positions_df.apply(
         calculate_worst_case_risk, axis=1
     )
+    positions_df["TargetProfit"] = positions_df.apply(calculate_target_profit, axis=1)
     logger.info("Positions data processed successfully.")
     return positions_df
