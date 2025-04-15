@@ -18,7 +18,7 @@ def setup_logger() -> logging.Logger:
 
     # Create a stream handler to output logs to the terminal
     stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.DEBUG)  # Log everything to the terminal
+    stream_handler.setLevel(logging.INFO)  # Log everything to the terminal
     stream_formatter = logging.Formatter(
         "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
@@ -29,6 +29,6 @@ def setup_logger() -> logging.Logger:
     logger.addHandler(stream_handler)
 
     logging.getLogger("ib_async").setLevel(logging.WARNING)
-    logging.getLogger("gspread").setLevel(logging.WARNING)
-    logging.getLogger("gspread_dataframe").setLevel(logging.WARNING)
+    # logging.getLogger("gspread").setLevel(logging.WARNING)
+    # logging.getLogger("gspread_dataframe").setLevel(logging.WARNING)
     return logger

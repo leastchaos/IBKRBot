@@ -23,6 +23,7 @@ def get_sheet_data(
     headers: list[str] | None = None,
 ) -> pd.DataFrame:
     """get the data from the sheet"""
+    logger.info(f"Getting data from {workbook} {sheet_name}")
     worksheet = get_worksheet(workbook, sheet_name)
     dataframe = gd.get_as_dataframe(worksheet, evaluate_formulas=evaluate_formulas)
     # remove empty rows

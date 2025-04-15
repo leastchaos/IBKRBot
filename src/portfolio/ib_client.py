@@ -1,8 +1,34 @@
-from ib_async import IB, Forex
+import json
+from pathlib import Path
+from ib_async import IB, Forex, Ticker
 import pandas as pd
 import logging
 
 logger = logging.getLogger()
+# Define the cache file path
+SCRIPT_DIR = Path(__file__).parent.parent.parent
+CACHE_DIR = SCRIPT_DIR / "cache"
+CACHE_FILE = CACHE_DIR / "model_greeks_cache.json"
+# Ensure the cache directory exists
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# Load the cache from the file if it exists
+def load_cache():
+    if CACHE_FILE.exists():
+        with open(CACHE_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+
+# Save the cache to the file
+def save_cache(cache):
+    with open(CACHE_FILE, "w") as f:
+        json.dump(cache, f)
+
+
+# Initialize the cache
+model_greeks_cache = load_cache()
 
 
 def fetch_balance(ib_client: IB) -> pd.DataFrame:
@@ -31,6 +57,7 @@ def fetch_balance(ib_client: IB) -> pd.DataFrame:
     df = pd.DataFrame.from_dict(account_data, orient="index")
     df.index.name = "Account"
     df.reset_index(inplace=True)
+    logger.info(df)
     logger.info("Account data fetched successfully.")
     return df
 
@@ -39,7 +66,6 @@ def fetch_historical_prices(ib_client: IB, contracts: list) -> dict[int, float]:
     logger.info("Fetching historical prices from TWS...")
     historical_prices = {}
     contracts = ib_client.qualifyContracts(*contracts)
-    ib_client.reqMarketDataType(4)
     for contract in contracts:
         try:
             bars = ib_client.reqHistoricalData(
@@ -107,11 +133,51 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
     positions = ib_client.positions()
     position_data = []
     unique_currencies = set()
-    contracts = []
-    for pos in positions:
+    contracts = [pos.contract for pos in positions]
+    qualified_contracts = ib_client.qualifyContracts(*contracts)
+    # unclear why individual contract able to get model greeks while all at once could not hence this was switched to single
+    ib_client.reqMarketDataType(2)
+    tickers = ib_client.reqTickers(*qualified_contracts)
+    ib_client.reqMarketDataType(4)
+    tickers_backup = ib_client.reqTickers(*qualified_contracts)
+    for pos, ticker, ticker_backup in zip(positions, tickers, tickers_backup):
         contract = pos.contract
         contracts.append(contract)
         unique_currencies.add(contract.currency)
+        delta, gamma, theta, vega = 1, 0, 0, 0
+        model_greeks = (
+            ticker.modelGreeks if ticker.modelGreeks else ticker_backup.modelGreeks
+        )
+        if model_greeks:
+            model_greeks = {
+                "delta": model_greeks.delta,
+                "gamma": model_greeks.gamma,
+                "theta": model_greeks.theta,
+                "vega": model_greeks.vega,
+            }
+        if model_greeks is None and contract.secType == "OPT":
+            logger.info(
+                f"Fetching cached model greeks for {contract.symbol} with conId {contract.conId}..."
+            )
+            model_greeks = model_greeks_cache.get(str(contract.conId))
+
+        if model_greeks:
+            logger.info(
+                f"Model greeks for {contract.symbol} with conId {contract.conId} fetched successfully."
+            )
+            delta = model_greeks["delta"]
+            gamma = model_greeks["gamma"]
+            theta = model_greeks["theta"]
+            vega = model_greeks["vega"]
+            # Update cache with newly fetched model Greeks
+            model_greeks_cache[str(contract.conId)] = {
+                "delta": delta,
+                "gamma": gamma,
+                "theta": theta,
+                "vega": vega,
+            }
+            save_cache(model_greeks_cache)  # Save updated cache
+        multiplier = contract.multiplier if contract.multiplier != "" else 1
         position_data.append(
             {
                 "Account": pos.account,
@@ -129,7 +195,12 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 ),
                 "Strike": getattr(contract, "strike", None),
                 "Right": getattr(contract, "right", None),
-                "Multiplier": getattr(contract, "multiplier", None),
+                "Multiplier": float(multiplier),
+                "MarketPrice": ticker.close or ticker.last,
+                "Delta": delta,
+                "Gamma": gamma,
+                "Theta": theta,
+                "Vega": vega,
             }
         )
     logger.info("Positions fetched successfully.")
@@ -139,13 +210,16 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
         for currency in unique_currencies
     }
     df["ForexRate"] = df["Currency"].map(forex_rates)
-    market_prices = fetch_historical_prices(ib_client, contracts)
-    df["MarketPrice"] = df["ConId"].map(market_prices)
+    print(df.head())
+    df["MarketPrice"] = df["MarketPrice"].fillna(df["AvgCost"])
     return df
 
 
 if __name__ == "__main__":
     ib_client = IB()
     ib_client.connect("127.0.0.1", 7496, clientId=1)
+    ib_client.reqMarketDataType(4)
     balance = fetch_balance(ib_client)
     print(balance)
+    position = fetch_positions(ib_client)
+    print(position)

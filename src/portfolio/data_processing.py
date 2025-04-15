@@ -15,16 +15,15 @@ def calculate_initial_risk(row: pd.Series) -> float | None:
     right = row["Right"]
 
     if position > 0:
-        initial_risk = avg_cost * position * forex_rate
-    elif sec_type == "OPT" and right == "P" and position < 0:
-        initial_risk = (
-            -position * strike * multiplier * forex_rate + position * avg_cost * forex_rate
+        return avg_cost * position * forex_rate
+    if sec_type == "OPT" and right == "P" and position < 0:
+        return (
+            -position * strike * multiplier * forex_rate
+            + position * avg_cost * forex_rate
         )
-    elif sec_type == "OPT" and right == "C" and position < 0:
-        initial_risk = position * avg_cost * forex_rate
-    else:
-        initial_risk = None
-    return initial_risk
+    if sec_type == "OPT" and right == "C" and position < 0:
+        return position * avg_cost * forex_rate
+    return None
 
 
 def calculate_current_risk(row) -> float | None:
@@ -37,14 +36,13 @@ def calculate_current_risk(row) -> float | None:
     right = row["Right"]
 
     if position > 0:
-        current_risk = market_price * position * multiplier
-    elif sec_type == "OPT" and right == "P" and position < 0:
+        return market_price * position * multiplier * forex_rate
+    if sec_type == "OPT" and right == "P" and position < 0:
         current_risk = -position * strike * multiplier + position * market_price
-    elif sec_type == "OPT" and right == "C" and position < 0:
-        current_risk = position * market_price
-    else:
-        current_risk = None
-    return current_risk * forex_rate
+        return current_risk * forex_rate
+    if sec_type == "OPT" and right == "C" and position < 0:
+        return position * market_price * forex_rate
+    return None
 
 
 def calculate_worst_case_risk(row) -> float | None:
@@ -59,26 +57,40 @@ def calculate_worst_case_risk(row) -> float | None:
 
     if sec_type == "STK" and position > 0:  # Long stock
         # Assume the market price drops to the worst-case price
-        worst_case_risk = (market_price - min(lowest_price, 0.8*market_price)) * position * forex_rate
-    elif sec_type == "OPT" and right == "P" and position < 0:  # Short put
+        return (
+            (market_price - min(lowest_price, 0.8 * market_price))
+            * position
+            * forex_rate
+        )
+    if sec_type == "OPT" and right == "P" and position < 0:  # Short put
         # Assume the market price drops to the worst-case price
-        worst_case_risk = (
-            -position * (strike - min(lowest_price, 0.8 * strike)) * multiplier * forex_rate
+        return (
+            -position
+            * (strike - min(lowest_price, 0.8 * strike))
+            * multiplier
+            * forex_rate
             + position * market_price * forex_rate
         )
-    elif sec_type == "OPT" and right == "C" and position > 0:  # Long call
-        # Worst-case risk is already calculated as CurrentMaxRisk
-        worst_case_risk = row["CurrentMaxRisk"]
-    elif sec_type == "OPT" and right == "P" and position > 0:  # Long put
-        # Worst-case risk is already calculated as CurrentMaxRisk
-        worst_case_risk = row["CurrentMaxRisk"]
-    elif sec_type == "OPT" and right == "C" and position < 0:  # Short call
-        # Worst-case risk is already calculated as CurrentMaxRisk
-        worst_case_risk = row["CurrentMaxRisk"]
-    else:
-        worst_case_risk = None
+    return row["CurrentMaxRisk"]
 
-    return worst_case_risk
+
+def determine_position_type(row: pd.Series) -> str:
+    """
+    Determines the type of position based on SecType, Right, and Position.
+    """
+    sec_type = row["SecType"]
+    right = row["Right"]
+    position = row["Position"]
+
+    if sec_type == "STK":
+        return "Stock"
+    if sec_type != "OPT":
+        return "Unknown"
+    if right == "C":
+        return "Long Call" if position > 0 else "Short Call"
+    if right == "P":
+        return "Long Put" if position > 0 else "Short Put"
+    return "Unknown"
 
 
 def process_positions_data(
@@ -92,6 +104,10 @@ def process_positions_data(
         right_on="UnderlyingSymbol",
         how="left",
     )
+    positions_df["StockEquivalentMovement"] = (
+        positions_df["Delta"] * positions_df["Position"] * positions_df["Multiplier"]
+    )
+    positions_df["PositionType"] = positions_df.apply(determine_position_type, axis=1)
     positions_df["LowestPrice"] = positions_df["LowestPrice"].fillna(0)
     positions_df["InitialMaxRisk"] = positions_df.apply(calculate_initial_risk, axis=1)
     positions_df["CurrentMaxRisk"] = positions_df.apply(calculate_current_risk, axis=1)

@@ -1,37 +1,80 @@
+import logging
+import time
+import keyboard  # New dependency for key detection
+from tqdm import tqdm  # New dependency for progress bar
 from ib_async import IB
 from data_processing import process_positions_data
 from ib_client import fetch_positions, fetch_balance
 from sheet import get_sheet_data, set_sheet_data
 from logger_config import setup_logger
 
-# Initialize the logger
-logger = setup_logger()
+logger = logging.getLogger()
 
 
-# Main function
+def connect_to_ib() -> IB:
+    ib = IB()
+    ib.connect("127.0.0.1", 7496, clientId=1)
+    return ib
+
+def update_data(
+    ib: IB,
+    workbook_name: str,
+    position_sheet: str,
+    balance_sheet: str,
+    worst_case_scenario_sheet: str,
+) -> None:
+    try:
+        if not ib.isConnected():
+            connect_to_ib()
+        positions_df = fetch_positions(ib) # this switches to ib.reqMarketDataType(4)
+        balance_df = fetch_balance(ib)
+        worst_case_df = get_sheet_data(workbook_name, worst_case_scenario_sheet)
+        positions_df = process_positions_data(positions_df, worst_case_df)
+
+        set_sheet_data(workbook_name, position_sheet, positions_df)
+        set_sheet_data(workbook_name, balance_sheet, balance_df)
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
+
+    logger.info("Data update completed.")
+
+def wait_for_next_update(wait_time: int) -> None:
+    logger.info(
+        "Update completed. Waiting 5 minutes (press 's' to skip wait)..."
+    )
+    for _ in tqdm(range(wait_time, 0, -1), desc="Next refresh", unit="s", ncols=80):
+
+        if keyboard.is_pressed("s"):  # Check for 's' key press
+            logger.info("Manual refresh triggered!")
+            break
+        time.sleep(1)
+
+
 def main(
     workbook_name="Portfolio Tracking",
     position_sheet="IBKRPositions",
     balance_sheet="IBKRBalances",
     worst_case_scenario_sheet="Worst Case Scenario",
 ) -> None:
-    logger.info("Starting the main function...")
-
-    # Configure TWS connection
+    setup_logger()
     ib = IB()
-    logger.info("Connecting to TWS...")
-    ib.connect("127.0.0.1", 7496, clientId=1)  # Default TWS API port is 7497
-    positions_df = fetch_positions(ib)
-    balance_df = fetch_balance(ib)
-    ib.disconnect()
+    ib.connect("127.0.0.1", 7496, clientId=1)
 
-    worst_case_df = get_sheet_data(workbook_name, worst_case_scenario_sheet)
-    positions_df = process_positions_data(positions_df, worst_case_df)
+    try:
+        while True:
+            update_data(
+                ib,
+                workbook_name,
+                position_sheet,
+                balance_sheet,
+                worst_case_scenario_sheet,
+            )
+            wait_for_next_update(300)
 
-    set_sheet_data(workbook_name, position_sheet, positions_df)
-    set_sheet_data(workbook_name, balance_sheet, balance_df)
-
-    logger.info("Main function completed successfully.")
+    except KeyboardInterrupt:
+        logger.info("Exiting program...")
+    finally:
+        ib.disconnect()
 
 
 if __name__ == "__main__":
