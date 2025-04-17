@@ -1,6 +1,7 @@
 from ib_async import IB, Contract, LimitOrder, Stock, Trade
 import numpy as np
 import logging
+from decimal import Decimal, getcontext
 
 logger = logging.getLogger()
 
@@ -8,23 +9,22 @@ logger = logging.getLogger()
 def manage_orders(
     ib: IB,
     contract: Stock,
-    buy_prices: list[float],
-    sell_prices: list[float],
-    buy_sizes: list[float],
-    sell_sizes: list[float],
-    step_size: float,
-    precision: int,
+    buy_prices: list[Decimal],
+    sell_prices: list[Decimal],
+    buy_sizes: list[Decimal],
+    sell_sizes: list[Decimal],
+    step_size: Decimal,
 ) -> None:
-    """Manage buy and sell orders."""
+    """Manage buy and sell orders using Decimal."""
     # Cancel out-of-range orders
-    cancel_out_of_range_orders(ib, contract, buy_prices, sell_prices, step_size, precision)
+    cancel_out_of_range_orders(ib, contract, buy_prices, sell_prices, step_size)
 
     # Fetch existing open orders
     buy_orders, sell_orders = {}, {}
     for order in ib.reqAllOpenOrders():
         if order.contract.conId == contract.conId:
             (buy_orders if order.order.action == "BUY" else sell_orders)[
-                order.order.lmtPrice
+                Decimal(str(order.order.lmtPrice))
             ] = order
 
     # Process buy orders
@@ -51,19 +51,23 @@ def manage_orders(
 def cancel_out_of_range_orders(
     ib: IB,
     contract: Contract,
-    buy_prices: list[float],
-    sell_prices: list[float],
-    step_size: float,
-    precision: int,
+    buy_prices: list[Decimal],
+    sell_prices: list[Decimal],
+    step_size: Decimal,
 ) -> None:
-    """Cancel out-of-range orders."""
-    valid_prices = np.arange(
-        min(buy_prices) - step_size, max(sell_prices) + step_size, step_size
-    )
-    valid_prices = [round(p, precision) for p in valid_prices]
+    """Cancel out-of-range orders using Decimal."""
+    # Generate valid price range using Decimal arithmetic
+    min_price = min(buy_prices)
+    max_price = max(sell_prices)
+    valid_prices = [
+        min_price + i * step_size
+        for i in range(int((max_price - min_price) / step_size) + 1)
+    ]
+
+    # Cancel out-of-range orders
     for order in ib.reqAllOpenOrders():
         if order.contract.conId == contract.conId:
-            price = order.order.lmtPrice
+            price = Decimal(str(order.order.lmtPrice))
             if price not in valid_prices:
                 logger.info(
                     f"Cancelling out-of-range {order.order.action} order @ {price}"
@@ -75,25 +79,25 @@ def process_orders(
     ib: IB,
     contract: Contract,
     action: str,
-    prices: list[float],
-    sizes: list[float],
-    existing_orders: dict[float, Trade],
+    prices: list[Decimal],
+    sizes: list[Decimal],
+    existing_orders: dict[Decimal, Trade],
 ) -> None:
-    """Process buy/sell orders."""
+    """Process buy/sell orders using Decimal."""
     for price, size in zip(prices, sizes):
-        if size <= 0:
+        if size <= Decimal(0):
             continue
         if price in existing_orders:
             existing_order = existing_orders[price]
-            if existing_order.order.totalQuantity == size:
+            if Decimal(str(existing_order.order.totalQuantity)) == size:
                 logger.debug(f"Order exists: {action} {size} @ {price}")
                 continue
             ib.cancelOrder(existing_order.order)
             logger.info(f"Cancelled {action} @ {price}")
         order = LimitOrder(
             action=action,
-            totalQuantity=size,
-            lmtPrice=price,
+            totalQuantity=float(size),  # Convert Decimal to float for IB API
+            lmtPrice=float(price),  # Convert Decimal to float for IB API
             tif="GTC",  # Good-Till-Cancelled
             outsideRth=True,  # Allow trading outside regular trading hours
         )
@@ -102,15 +106,15 @@ def process_orders(
 
 
 def place_limit_order(
-    ib: IB, stock_ticker: Stock, action: str, size: float, price: float
+    ib: IB, stock_ticker: Stock, action: str, size: Decimal, price: Decimal
 ) -> Trade:
     """
-    Place a limit order with the given parameters.
+    Place a limit order with the given parameters using Decimal.
     """
     order = LimitOrder(
         action=action,
-        totalQuantity=size,
-        lmtPrice=price,
+        totalQuantity=float(size),  # Convert Decimal to float for IB API
+        lmtPrice=float(price),  # Convert Decimal to float for IB API
         tif="GTC",  # Good-Till-Cancelled
         outsideRth=True,  # Allow trading outside regular trading hours
     )
@@ -134,22 +138,24 @@ def wait_for_order_execution(ib: IB, trade: Trade, timeout=60) -> bool:
 def execute_catch_up_trade(
     ib: IB,
     stock_ticker: Stock,
-    last_traded_price: float,
-    current_price: float,
+    last_traded_price: Decimal | None,
+    current_price: Decimal,
     active_levels: int,
-    step_size: float,
-    position_per_level: float,
+    step_size: Decimal,
+    position_per_level: Decimal,
     timeout=60,
 ):
     """
-    Execute the trading logic based on the price difference between last traded price and current price.
+    Execute the trading logic based on the price difference between last traded price and current price using Decimal.
     """
     if (
         last_traded_price
         and abs(current_price - last_traded_price) > active_levels * step_size
     ):
         # Calculate the number of levels and size
-        size = abs(last_traded_price - current_price) // step_size * position_per_level
+        size = (
+            abs(current_price - last_traded_price) // step_size
+        ) * position_per_level
         action = "BUY" if last_traded_price > current_price else "SELL"
         price = (
             current_price + step_size if action == "BUY" else current_price - step_size
@@ -159,7 +165,9 @@ def execute_catch_up_trade(
         while size > position_per_level:
             trade = place_limit_order(ib, stock_ticker, action, size, price)
             if wait_for_order_execution(ib, trade, timeout):
-                logger.info(f"Order executed: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}")
+                logger.info(
+                    f"Order executed: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
+                )
                 break
             logger.warning(
                 f"Order failed to execute fully: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
@@ -169,6 +177,5 @@ def execute_catch_up_trade(
                 f"Cancelled order: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
             )
             # Handle any remaining quantity
-            size -= trade.filled() + position_per_level
+            size -= Decimal(trade.filled()) + position_per_level
             price = price + step_size if action == "BUY" else price - step_size
-            
