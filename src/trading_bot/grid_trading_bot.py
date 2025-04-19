@@ -1,5 +1,7 @@
+from pprint import pprint
+import random
 from ib_async import ExecutionFilter
-from ib_connector import connect_to_ibkr, get_stock_ticker
+from ib_connector import connect_to_ibkr, get_current_position, get_stock_ticker
 from logger_config import setup_logger
 from trade_history import (
     check_for_new_executions,
@@ -8,15 +10,17 @@ from trade_history import (
     resolve_execution_conflict,
 )
 from grid_calculations import (
-    calculate_grid_levels,
-    calculate_grid_sizes,
-    evaluate_risks,
+    generate_grid,
+    get_current_grid_buy_and_sell_levels,
 )
 from order_management import execute_catch_up_trade, manage_orders
 from decimal import Decimal, getcontext
 
+from notifications import send_email_alert
+from evaluate_risk import evaluate_risks, get_historical_data, evaluate_risks
+
 # Set global precision for Decimal
-getcontext().prec = 6  # Adjust precision as needed
+
 
 logger = setup_logger()
 
@@ -32,16 +36,23 @@ def run_grid_bot(
     min_price: Decimal,
     max_price: Decimal,
     step_size: Decimal,
+    min_percentage_step: Decimal,
+    max_value_per_level: Decimal,
+    add_value_per_level: Decimal,
     position_per_level: int,
     max_position_per_level: int,
     position_step: int,
     active_levels: int,
     loop_interval: int,
+    catchup_trade_interval: int,
     trade_history_file: str = "trade_history.json",
     req_market_data_type: int = 1,
+    decimal_precision: int = 6,
+    fee_per_trade: Decimal = Decimal("3"),
+    slippage_per_trade: Decimal = Decimal("0.01"),
 ) -> None:
     """Run the grid trading bot using Decimal."""
-
+    getcontext().prec = decimal_precision  # Adjust precision as needed
     ib = connect_to_ibkr(host, port, client_id, readonly)
     ib.reqMarketDataType(req_market_data_type)
     stock_ticker = get_stock_ticker(ib, symbol, exchange, currency)
@@ -60,31 +71,43 @@ def run_grid_bot(
         last_traded_prices[con_id] = Decimal(str(record.price))
     logger.info(f"Last traded prices: {last_traded_prices}")
 
-    # Evaluate risks
-    evaluate_risks(
+    grid = generate_grid(
         min_price=min_price,
         max_price=max_price,
         step_size=step_size,
-        positions_per_level=position_per_level,
-        ib=ib,
-        stock_ticker=stock_ticker,
+        min_percentage_step=min_percentage_step,
+        max_value_per_level=max_value_per_level,
+        add_value_per_level=add_value_per_level,
+        position_step=position_step,
     )
-
+    historical_data = get_historical_data(ib, stock_ticker, "30 D", "1 min")
+    risks = evaluate_risks(
+        grid=grid,
+        ticker=stock_ticker,
+        historical_data=historical_data,
+        fee_per_trade=fee_per_trade,
+        slippage_per_trade=slippage_per_trade,
+    )
+    pprint(risks)
     # Get current price
     if not (current_price := stock_ticker.marketPrice()):
         raise ValueError("Invalid stock price at initialization")
-    current_price = Decimal(str(current_price))
+    current_price = Decimal(str(current_price))  # Decimal(str(110.5))
 
-    last_traded_price = last_traded_prices.get(stock_ticker.contract.conId)
+    last_traded_price = last_traded_prices.get(
+        stock_ticker.contract.conId, current_price
+    )
+    current_pos = get_current_position(ib, stock_ticker)
+
     # Catch up trades
     execute_catch_up_trade(
         ib=ib,
         stock_ticker=stock_ticker,
         last_traded_price=last_traded_price,
         current_price=current_price,
-        active_levels=active_levels,
-        step_size=step_size,
-        position_per_level=position_per_level,
+        grid=grid,
+        timeout=catchup_trade_interval,
+        current_pos=current_pos,
     )
 
     try:
@@ -93,17 +116,10 @@ def run_grid_bot(
             if not (current_price := stock_ticker.marketPrice()):
                 logger.warning("Invalid stock price")
                 continue
-            current_price = Decimal(str(current_price))
+            current_price = Decimal(str(current_price))  # Decimal(str(110.5))
 
-            current_pos = next(
-                (
-                    pos.position
-                    for pos in ib.positions()
-                    if pos.contract.conId == stock_ticker.contract.conId
-                ),
-                0,
-            )
-            current_pos = Decimal(str(current_pos))
+
+            current_pos = get_current_position(ib, stock_ticker)
 
             # Check for new executions
             new_trades = check_for_new_executions(ib, client_id, trade_history)
@@ -117,40 +133,32 @@ def run_grid_bot(
                 f"Current position: {current_pos}"
             )
 
-            last_traded_price = last_traded_prices.get(stock_ticker.contract.conId)
+            last_traded_price = last_traded_prices.get(stock_ticker.contract.conId, current_price)
             # Calculate grid levels
-            buy_prices, sell_prices = calculate_grid_levels(
-                current_price=last_traded_price or current_price,
-                min_price=min_price,
-                max_price=max_price,
-                step_size=step_size,
+            buy_levels, sell_levels = get_current_grid_buy_and_sell_levels(
+                last_traded_price=last_traded_price,
+                grid=grid,
                 active_levels=active_levels,
+                current_position=current_pos,
             )
-
-            buy_sizes, sell_sizes = calculate_grid_sizes(
-                position_per_level=position_per_level,
-                max_position_per_level=max_position_per_level,
-                current_pos=current_pos,
-                position_step=position_step,
-                step_size=step_size,
-                current_price=last_traded_price or current_price,
-                max_price=max_price,
-                min_price=min_price,
-                active_levels=active_levels,
-            )
-
             # Manage orders
             manage_orders(
                 ib=ib,
                 contract=stock_ticker.contract,
-                buy_prices=buy_prices,
-                sell_prices=sell_prices,
-                buy_sizes=buy_sizes,
-                sell_sizes=sell_sizes,
+                buy_levels=buy_levels,
+                sell_levels=sell_levels,
                 step_size=step_size,
+            )
+
+            logger.info(
+                "-------------------------------------------------------------------------------------------------"
             )
     finally:
         save_trade_history(trade_history_file, trade_history)
+        send_email_alert(
+            subject="Grid Trading Bot Stopped",
+            body="Grid Trading Bot stopped successfully",
+        )
 
 
 if __name__ == "__main__":
@@ -163,13 +171,17 @@ if __name__ == "__main__":
         exchange="SMART",
         currency="USD",
         min_price=Decimal("60.0"),
-        max_price=Decimal("160.0"),
-        step_size=Decimal("0.1"),
+        max_price=Decimal("180.0"),
+        step_size=Decimal("2"),
+        min_percentage_step=Decimal("2"),
+        max_value_per_level=Decimal("1000"),
+        add_value_per_level=Decimal("0"),
         position_per_level=10,
         max_position_per_level=20,
         position_step=1,
         active_levels=5,
         loop_interval=10,
+        catchup_trade_interval=60,
         trade_history_file="trade_history.json",
-        req_market_data_type=2,
+        req_market_data_type=4,
     )

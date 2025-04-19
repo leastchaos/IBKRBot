@@ -1,7 +1,8 @@
-from ib_async import IB, Contract, LimitOrder, Stock, Trade
-import numpy as np
+from ib_async import IB, Contract, LimitOrder, Stock, Ticker, Trade
 import logging
-from decimal import Decimal, getcontext
+from decimal import Decimal
+
+from grid_calculations import get_current_grid_buy_and_sell_levels
 
 logger = logging.getLogger()
 
@@ -9,15 +10,15 @@ logger = logging.getLogger()
 def manage_orders(
     ib: IB,
     contract: Stock,
-    buy_prices: list[Decimal],
-    sell_prices: list[Decimal],
-    buy_sizes: list[Decimal],
-    sell_sizes: list[Decimal],
+    buy_levels: dict[Decimal, Decimal],
+    sell_levels: dict[Decimal, Decimal],
     step_size: Decimal,
 ) -> None:
     """Manage buy and sell orders using Decimal."""
     # Cancel out-of-range orders
-    cancel_out_of_range_orders(ib, contract, buy_prices, sell_prices, step_size)
+    min_price = min(buy_levels.keys())
+    max_price = max(sell_levels.keys())
+    cancel_out_of_range_orders(ib, contract, min_price, max_price, step_size)
 
     # Fetch existing open orders
     buy_orders, sell_orders = {}, {}
@@ -32,8 +33,7 @@ def manage_orders(
         ib=ib,
         contract=contract,
         action="BUY",
-        prices=buy_prices,
-        sizes=buy_sizes,
+        levels=buy_levels,
         existing_orders=buy_orders,
     )
 
@@ -42,8 +42,7 @@ def manage_orders(
         ib=ib,
         contract=contract,
         action="SELL",
-        prices=sell_prices,
-        sizes=sell_sizes,
+        levels=sell_levels,
         existing_orders=sell_orders,
     )
 
@@ -51,14 +50,12 @@ def manage_orders(
 def cancel_out_of_range_orders(
     ib: IB,
     contract: Contract,
-    buy_prices: list[Decimal],
-    sell_prices: list[Decimal],
+    min_price: Decimal,
+    max_price: Decimal,
     step_size: Decimal,
 ) -> None:
     """Cancel out-of-range orders using Decimal."""
     # Generate valid price range using Decimal arithmetic
-    min_price = min(buy_prices)
-    max_price = max(sell_prices)
     valid_prices = [
         min_price + i * step_size
         for i in range(int((max_price - min_price) / step_size) + 1)
@@ -79,12 +76,11 @@ def process_orders(
     ib: IB,
     contract: Contract,
     action: str,
-    prices: list[Decimal],
-    sizes: list[Decimal],
+    levels: dict[Decimal, Decimal],
     existing_orders: dict[Decimal, Trade],
 ) -> None:
     """Process buy/sell orders using Decimal."""
-    for price, size in zip(prices, sizes):
+    for price, size in levels.items():
         if size <= Decimal(0):
             continue
         if price in existing_orders:
@@ -106,7 +102,7 @@ def process_orders(
 
 
 def place_limit_order(
-    ib: IB, stock_ticker: Stock, action: str, size: Decimal, price: Decimal
+    ib: IB, stock_ticker: Ticker, action: str, size: Decimal, price: Decimal
 ) -> Trade:
     """
     Place a limit order with the given parameters using Decimal.
@@ -135,47 +131,102 @@ def wait_for_order_execution(ib: IB, trade: Trade, timeout=60) -> bool:
     return False
 
 
+def cancel_all_orders(ib: IB, contract: Contract) -> None:
+    for order in ib.reqAllOpenOrders():
+        if order.contract.conId == contract.conId:
+            ib.cancelOrder(order.order)
+            logger.info(f"Canceled {order.order.action} order @ {order.order.lmtPrice}")
+
+    logger.info(f"All orders in {contract.symbol} canceled.")
+
+
 def execute_catch_up_trade(
     ib: IB,
-    stock_ticker: Stock,
-    last_traded_price: Decimal | None,
+    stock_ticker: Ticker,
     current_price: Decimal,
-    active_levels: int,
-    step_size: Decimal,
-    position_per_level: Decimal,
-    timeout=60,
+    last_traded_price: Decimal,
+    grid: dict[Decimal, Decimal],
+    timeout: int,
+    current_pos: Decimal,
 ):
     """
     Execute the trading logic based on the price difference between last traded price and current price using Decimal.
     """
-    if (
-        last_traded_price
-        and abs(current_price - last_traded_price) > active_levels * step_size
-    ):
-        # Calculate the number of levels and size
-        size = (
-            abs(current_price - last_traded_price) // step_size
-        ) * position_per_level
-        action = "BUY" if last_traded_price > current_price else "SELL"
-        price = (
-            current_price + step_size if action == "BUY" else current_price - step_size
+    nearest_price_in_grid = min(grid.keys(), key=lambda x: abs(x - last_traded_price))
+    buy_last_traded_grid, sell_last_traded_grid = get_current_grid_buy_and_sell_levels(
+        nearest_price_in_grid, grid, 1, current_pos
+    )
+    current_buy_level = min(buy_last_traded_grid.keys())
+    current_sell_level = max(sell_last_traded_grid.keys())
+    logger.info(
+        f"Current price: {current_price}, Last traded price: {last_traded_price}"
+    )
+    logger.info(
+        f"Current buy level: {current_buy_level}, Current sell level: {current_sell_level}"
+    )
+    if current_price >= current_buy_level and current_price <= current_sell_level:
+        logger.info(
+            f"No catch-up trade required: current_price={current_price}, current_buy_level={current_buy_level}, current_sell_level={current_sell_level}"
         )
+        return
+    logger.info(
+        f"Executing catch-up trade: current_price={current_price}, current_buy_level={current_buy_level}, current_sell_level={current_sell_level}"
+    )
+    cancel_all_orders(ib, stock_ticker.contract)
+    # Calculate the number of levels and size
+    trade_grid = {}
+    price_range = sorted(grid.keys())
+    logger.info(f"Price range: {price_range}")
+    if current_price < last_traded_price:
+        action = "BUY"
+        trade_grid = {
+            price_range[idx]: grid[price_range[idx]]
+            for idx in range(0, len(price_range))
+            if price_range[idx] >= current_price
+            and price_range[idx] <= last_traded_price
+        }
+        size = sum(trade_grid.values())
+        trade_grid = dict(sorted(trade_grid.items(), key=lambda x: x[0], reverse=False))
+    if current_price > last_traded_price:
+        action = "SELL"
+        trade_grid = {
+            price_range[idx]: grid[price_range[idx - 1]]
+            for idx in range(1, len(price_range))
+            if price_range[idx] <= current_price
+            and price_range[idx] >= last_traded_price
+        }
+        size = sum(trade_grid.values())
+        size = min(size, current_pos)
+        # sort grid with the highest price first
+        trade_grid = dict(sorted(trade_grid.items(), key=lambda x: x[0], reverse=True))
+    logger.info(f"Action: {action}")
+    logger.info(f"Size: {size}")
+    logger.info(f"Trade grid: {trade_grid}")
+    for price, level_size in trade_grid.items():
+        if size <= Decimal(0):
+            break
+        logger.info(f"Price: {price}, Size: {level_size}")
 
-        # Place the initial order
-        while size > position_per_level:
-            trade = place_limit_order(ib, stock_ticker, action, size, price)
-            if wait_for_order_execution(ib, trade, timeout):
-                logger.info(
-                    f"Order executed: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
-                )
-                break
-            logger.warning(
-                f"Order failed to execute fully: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
-            )
-            ib.cancelOrder(trade.order)
+        trade = place_limit_order(ib, stock_ticker, action, size, price)
+        if wait_for_order_execution(ib, trade, timeout):
             logger.info(
-                f"Cancelled order: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
+                f"Order executed: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
             )
-            # Handle any remaining quantity
-            size -= Decimal(trade.filled()) + position_per_level
-            price = price + step_size if action == "BUY" else price - step_size
+            break
+        logger.warning(
+            f"Order failed to execute fully: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
+        )
+        ib.cancelOrder(trade.order)
+        logger.info(
+            f"Cancelled order: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
+        )
+        # Handle any remaining quantity
+        size -= Decimal(trade.filled()) + level_size
+
+    if size > 0:
+        logger.warning(
+            f"Order failed to execute fully: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
+        )
+        logger.info(f"Remaining quantity: {size}")
+
+    return

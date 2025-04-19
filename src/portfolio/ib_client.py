@@ -217,7 +217,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
 
 if __name__ == "__main__":
     ib_client = IB()
-    ib_client.connect("127.0.0.1", 7496, clientId=1)
+    ib_client.connect("127.0.0.1", 7496, clientId=1, readonly=True)
     ib_client.reqMarketDataType(4)
     balance = fetch_balance(ib_client)
     print(balance)
