@@ -49,6 +49,7 @@ def run_grid_bot(
     decimal_precision: int = 6,
     fee_per_trade: Decimal = Decimal("3"),
     slippage_per_trade: Decimal = Decimal("0.01"),
+    ensure_no_short_position: bool = True,
 ) -> None:
     """Run the grid trading bot using Decimal."""
     getcontext().prec = decimal_precision  # Adjust precision as needed
@@ -108,6 +109,7 @@ def run_grid_bot(
         grid=grid,
         timeout=catchup_trade_interval,
         current_pos=current_pos,
+        ensure_no_short_position=ensure_no_short_position,
     )
 
     try:
@@ -117,7 +119,6 @@ def run_grid_bot(
                 logger.warning("Invalid stock price")
                 continue
             current_price = Decimal(str(current_price))  # Decimal(str(110.5))
-
 
             current_pos = get_current_position(ib, stock_ticker)
 
@@ -133,13 +134,16 @@ def run_grid_bot(
                 f"Current position: {current_pos}"
             )
 
-            last_traded_price = last_traded_prices.get(stock_ticker.contract.conId, current_price)
+            last_traded_price = last_traded_prices.get(
+                stock_ticker.contract.conId, current_price
+            )
             # Calculate grid levels
             buy_levels, sell_levels = get_current_grid_buy_and_sell_levels(
                 last_traded_price=last_traded_price,
                 grid=grid,
                 active_levels=active_levels,
                 current_position=current_pos,
+                ensure_no_short_position=ensure_no_short_position,
             )
             # Manage orders
             manage_orders(
@@ -183,4 +187,5 @@ if __name__ == "__main__":
         catchup_trade_interval=60,
         trade_history_file="trade_history.json",
         req_market_data_type=4,
+        ensure_no_short_position=True,
     )

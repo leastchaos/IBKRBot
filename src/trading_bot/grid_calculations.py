@@ -66,6 +66,7 @@ def get_current_grid_buy_and_sell_levels(
     grid: dict[Decimal, Decimal],
     active_levels: int,
     current_position: Decimal,
+    ensure_no_short_position: bool,
 ) -> tuple[dict[Decimal, Decimal], dict[Decimal, Decimal]]:
     """Calculate buy and sell grid levels using Decimal."""
     nearest_price = min(grid.keys(), key=lambda x: abs(x - last_traded_price))
@@ -92,6 +93,15 @@ def get_current_grid_buy_and_sell_levels(
         for i in range(1, active_levels + 1)
         if (idx := grid_index + i) < len(price_range)
     }
+    now_pos = current_position
+    if ensure_no_short_position:
+        for sell_price, sell_size in sell_levels.items():
+            sell_levels[sell_price] = min(now_pos, sell_size)
+            now_pos -= sell_size
+            if now_pos <= 0:
+                now_pos = 0
+        sell_levels = {k: v for k, v in sell_levels.items() if v > 0}
+
     logger.info(f"\nBuy: {buy_levels}\nSell: {sell_levels}")
 
     return buy_levels, sell_levels
@@ -132,4 +142,5 @@ if __name__ == "__main__":
         grid=grid,
         active_levels=1,
         current_position=Decimal("0"),
+        ensure_no_short_position=True,
     )

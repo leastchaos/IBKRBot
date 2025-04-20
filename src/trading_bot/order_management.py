@@ -159,13 +159,16 @@ def execute_catch_up_trade(
     grid: dict[Decimal, Decimal],
     timeout: int,
     current_pos: Decimal,
+    ensure_no_short_position: bool,
 ):
     """
     Execute the trading logic based on the price difference between last traded price and current price using Decimal.
     """
-    nearest_price_in_grid = min(grid.keys(), key=lambda x: abs(x - last_traded_price))
+    nearest_last_traded_price_in_grid = min(
+        grid.keys(), key=lambda x: abs(x - last_traded_price)
+    )
     buy_last_traded_grid, sell_last_traded_grid = get_current_grid_buy_and_sell_levels(
-        nearest_price_in_grid, grid, 1, current_pos
+        nearest_last_traded_price_in_grid, grid, 1, current_pos, False
     )
     current_buy_level = min(buy_last_traded_grid.keys())
     current_sell_level = max(sell_last_traded_grid.keys())
@@ -184,13 +187,17 @@ def execute_catch_up_trade(
     cancel_all_orders(ib, stock_ticker.contract)
     # Calculate the number of levels and size
     action = "BUY" if current_price < last_traded_price else "SELL"
-    trade_grid = determine_trade_grid(nearest_price_in_grid, last_traded_price, grid)
-    size = determine_max_size(current_pos, action, trade_grid)
-    execute_trade_grid(ib, stock_ticker, timeout, action, trade_grid, size)
+    trade_grid = determine_catch_up_trade_grid(
+        current_price, nearest_last_traded_price_in_grid, grid
+    )
+    size = determine_max_size(current_pos, action, trade_grid, ensure_no_short_position)
+    print("TRADE GRID: ", trade_grid)
+    print("SIZE: ", size)
+    execute_catch_up_trade_grid(ib, stock_ticker, timeout, action, trade_grid, size)
     return
 
 
-def execute_trade_grid(
+def execute_catch_up_trade_grid(
     ib: IB,
     stock_ticker: Ticker,
     timeout: int,
@@ -198,6 +205,7 @@ def execute_trade_grid(
     trade_grid: dict[Decimal, Decimal],
     size: Decimal,
 ):
+    trade = None
     for price, level_size in trade_grid.items():
         if size <= Decimal(0):
             return
@@ -217,45 +225,46 @@ def execute_trade_grid(
         )
         # Handle any remaining quantity
         size -= Decimal(trade.filled()) + level_size
-
-    logger.warning(
-        f"Order failed to execute fully: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
-        f"\nRemaining size: {size}"
-    )
+    if trade:
+        logger.warning(
+            f"Order failed to execute fully: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
+            f"\nRemaining size: {size}"
+        )
 
 
 def determine_max_size(
     current_pos: Decimal,
     action: Literal["BUY", "SELL"],
     trade_grid: dict[Decimal, Decimal],
+    ensure_no_short_position: bool = True,
 ):
     size = sum(trade_grid.values())
-    if action == "SELL":
+    if ensure_no_short_position and action == "SELL":
         size = min(size, current_pos)
     return size
 
 
-def determine_trade_grid(
-    nearest_price: Decimal,
+def determine_catch_up_trade_grid(
+    current_price: Decimal,
     last_traded_price: Decimal,
     grid: dict[Decimal, Decimal],
 ) -> dict[Decimal, Decimal]:
     trade_grid = {}
     price_range = sorted(grid.keys())
-    if nearest_price < last_traded_price:
+    if current_price < last_traded_price:
         trade_grid = {
             price_range[idx]: grid[price_range[idx]]
             for idx in range(0, len(price_range))
-            if price_range[idx] >= nearest_price
-            and price_range[idx] <= last_traded_price
+            if price_range[idx] > current_price
+            and price_range[idx] < last_traded_price
         }
         trade_grid = dict(sorted(trade_grid.items(), key=lambda x: x[0], reverse=False))
-    if nearest_price > last_traded_price:
+    if current_price > last_traded_price:
         trade_grid = {
             price_range[idx]: grid[price_range[idx - 1]]
             for idx in range(1, len(price_range))
-            if price_range[idx] <= nearest_price
-            and price_range[idx] >= last_traded_price
+            if price_range[idx] < current_price
+            and price_range[idx] > last_traded_price
         }
         # sort grid with the highest price first
         trade_grid = dict(sorted(trade_grid.items(), key=lambda x: x[0], reverse=True))
