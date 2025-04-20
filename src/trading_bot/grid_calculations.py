@@ -9,8 +9,9 @@ def generate_grid(
     max_price: Decimal,
     step_size: Decimal,
     min_percentage_step: Decimal,
-    max_value_per_level: Decimal,
+    start_value_at_min_price: Decimal,
     add_value_per_level: Decimal,
+    min_position_per_level: Decimal,
     position_step: Decimal,
 ) -> dict[Decimal, Decimal]:
     """Generate an entire grid of prices using Decimal."""
@@ -18,10 +19,10 @@ def generate_grid(
     def calculate_position_size(
         value_per_level: Decimal,
         price: Decimal,
-        position_step: Decimal,
     ) -> Decimal:
         return max(
-            (value_per_level / price) // position_step * position_step, position_step
+            (value_per_level / price) // position_step * position_step,
+            min_position_per_level,
         )
 
     logger.info(
@@ -31,16 +32,14 @@ def generate_grid(
         f"  Min Percentage Step: {min_percentage_step}\n"
         f"  Step Size: {step_size}\n"
         f"  Add Value per Level: {add_value_per_level}\n"
-        f"  Max Value per Level: {max_value_per_level}\n"
+        f"  Max Value per Level: {start_value_at_min_price}\n"
         f"  Position Step: {position_step}\n"
     )
     grid_levels = {
-        min_price: calculate_position_size(
-            max_value_per_level, min_price, position_step
-        )
+        min_price: calculate_position_size(start_value_at_min_price, min_price)
     }
     prev_price = min_price
-    value_per_level = max_value_per_level
+    value_per_level = start_value_at_min_price
 
     for i in range(int((max_price - min_price) // step_size) + 1):
         price = min_price + i * step_size
@@ -48,9 +47,7 @@ def generate_grid(
             continue
         prev_price = price
         value_per_level += add_value_per_level
-        grid_levels[price] = calculate_position_size(
-            value_per_level, price, position_step
-        )
+        grid_levels[price] = calculate_position_size(value_per_level, price)
     return grid_levels
 
 
@@ -124,7 +121,7 @@ if __name__ == "__main__":
         max_price=Decimal("160.0"),
         min_percentage_step=Decimal("2"),
         step_size=Decimal("2"),
-        max_value_per_level=Decimal("1000"),
+        start_value_at_min_price=Decimal("1000"),
         add_value_per_level=Decimal("0"),
         position_step=Decimal("1"),
     )

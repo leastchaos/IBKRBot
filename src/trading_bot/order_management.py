@@ -1,3 +1,4 @@
+from typing import Literal
 from ib_async import IB, Contract, LimitOrder, Stock, Ticker, Trade
 import logging
 from decimal import Decimal
@@ -5,6 +6,18 @@ from decimal import Decimal
 from grid_calculations import get_current_grid_buy_and_sell_levels
 
 logger = logging.getLogger()
+
+
+def fetch_existing_orders(
+    ib: IB, contract: Contract
+) -> tuple[dict[Decimal, Trade], dict[Decimal, Trade]]:
+    """Fetch existing open orders and categorize them into buy/sell orders."""
+    buy_orders, sell_orders = {}, {}
+    for order in ib.reqAllOpenOrders():
+        if order.contract.conId == contract.conId:
+            price = Decimal(str(order.order.lmtPrice))
+            (buy_orders if order.order.action == "BUY" else sell_orders)[price] = order
+    return buy_orders, sell_orders
 
 
 def manage_orders(
@@ -15,36 +28,12 @@ def manage_orders(
     step_size: Decimal,
 ) -> None:
     """Manage buy and sell orders using Decimal."""
-    # Cancel out-of-range orders
-    min_price = min(buy_levels.keys())
-    max_price = max(sell_levels.keys())
+    min_price, max_price = min(buy_levels.keys()), max(sell_levels.keys())
     cancel_out_of_range_orders(ib, contract, min_price, max_price, step_size)
 
-    # Fetch existing open orders
-    buy_orders, sell_orders = {}, {}
-    for order in ib.reqAllOpenOrders():
-        if order.contract.conId == contract.conId:
-            (buy_orders if order.order.action == "BUY" else sell_orders)[
-                Decimal(str(order.order.lmtPrice))
-            ] = order
-
-    # Process buy orders
-    process_orders(
-        ib=ib,
-        contract=contract,
-        action="BUY",
-        levels=buy_levels,
-        existing_orders=buy_orders,
-    )
-
-    # Process sell orders
-    process_orders(
-        ib=ib,
-        contract=contract,
-        action="SELL",
-        levels=sell_levels,
-        existing_orders=sell_orders,
-    )
+    buy_orders, sell_orders = fetch_existing_orders(ib, contract)
+    process_orders(ib, contract, "BUY", buy_levels, buy_orders)
+    process_orders(ib, contract, "SELL", sell_levels, sell_orders)
 
 
 def cancel_out_of_range_orders(
@@ -84,21 +73,43 @@ def process_orders(
         if size <= Decimal(0):
             continue
         if price in existing_orders:
-            existing_order = existing_orders[price]
-            if Decimal(str(existing_order.order.totalQuantity)) == size:
-                logger.debug(f"Order exists: {action} {size} @ {price}")
-                continue
-            ib.cancelOrder(existing_order.order)
-            logger.info(f"Cancelled {action} @ {price}")
-        order = LimitOrder(
-            action=action,
-            totalQuantity=float(size),  # Convert Decimal to float for IB API
-            lmtPrice=float(price),  # Convert Decimal to float for IB API
-            tif="GTC",  # Good-Till-Cancelled
-            outsideRth=True,  # Allow trading outside regular trading hours
-        )
-        ib.placeOrder(contract, order)
-        logger.info(f"Placed {action} GTC order: {size} @ {price}")
+            handle_existing_order(ib, existing_orders[price], action, price, size)
+        else:
+            place_new_order(ib, contract, action, price, size)
+
+
+def handle_existing_order(
+    ib: IB, order: Trade, action: str, price: Decimal, size: Decimal
+) -> None:
+    """Handle an existing order by comparing its size with the desired size."""
+    existing_size = Decimal(str(order.order.totalQuantity))
+    if existing_size == size:
+        logger.debug(f"Order exists: {action} {size} @ {price}")
+        return
+    ib.cancelOrder(order.order)
+    logger.info(f"Cancelled {action} @ {price}")
+
+
+def place_new_order(
+    ib: IB, contract: Contract, action: str, price: Decimal, size: Decimal
+) -> None:
+    """Place a new limit order."""
+    order = create_limit_order(action, float(size), float(price))
+    ib.placeOrder(contract, order)
+    logger.info(f"Placed {action} GTC order: {size} @ {price}")
+
+
+def create_limit_order(
+    action: str, total_quantity: float, lmt_price: float
+) -> LimitOrder:
+    """Create a limit order with common parameters."""
+    return LimitOrder(
+        action=action,
+        totalQuantity=total_quantity,
+        lmtPrice=lmt_price,
+        tif="GTC",
+        outsideRth=True,
+    )
 
 
 def place_limit_order(
@@ -119,7 +130,7 @@ def place_limit_order(
     return trade
 
 
-def wait_for_order_execution(ib: IB, trade: Trade, timeout=60) -> bool:
+def wait_for_order_execution(ib: IB, trade: Trade, timeout: int = 60) -> bool:
     """
     Wait for the order to execute fully within the specified timeout.
     Returns True if the order is fully executed, False otherwise.
@@ -158,61 +169,45 @@ def execute_catch_up_trade(
     )
     current_buy_level = min(buy_last_traded_grid.keys())
     current_sell_level = max(sell_last_traded_grid.keys())
-    logger.info(
-        f"Current price: {current_price}, Last traded price: {last_traded_price}"
-    )
-    logger.info(
-        f"Current buy level: {current_buy_level}, Current sell level: {current_sell_level}"
-    )
     if current_price >= current_buy_level and current_price <= current_sell_level:
         logger.info(
-            f"No catch-up trade required: current_price={current_price}, current_buy_level={current_buy_level}, current_sell_level={current_sell_level}"
+            f"No catch-up trade required: current_price={current_price}, "
+            f"current_buy_level={current_buy_level}, "
+            f"current_sell_level={current_sell_level}"
         )
         return
     logger.info(
-        f"Executing catch-up trade: current_price={current_price}, current_buy_level={current_buy_level}, current_sell_level={current_sell_level}"
+        f"Executing catch-up trade: current_price={current_price}, "
+        f"current_buy_level={current_buy_level}, "
+        f"current_sell_level={current_sell_level}"
     )
     cancel_all_orders(ib, stock_ticker.contract)
     # Calculate the number of levels and size
-    trade_grid = {}
-    price_range = sorted(grid.keys())
-    logger.info(f"Price range: {price_range}")
-    if current_price < last_traded_price:
-        action = "BUY"
-        trade_grid = {
-            price_range[idx]: grid[price_range[idx]]
-            for idx in range(0, len(price_range))
-            if price_range[idx] >= current_price
-            and price_range[idx] <= last_traded_price
-        }
-        size = sum(trade_grid.values())
-        trade_grid = dict(sorted(trade_grid.items(), key=lambda x: x[0], reverse=False))
-    if current_price > last_traded_price:
-        action = "SELL"
-        trade_grid = {
-            price_range[idx]: grid[price_range[idx - 1]]
-            for idx in range(1, len(price_range))
-            if price_range[idx] <= current_price
-            and price_range[idx] >= last_traded_price
-        }
-        size = sum(trade_grid.values())
-        size = min(size, current_pos)
-        # sort grid with the highest price first
-        trade_grid = dict(sorted(trade_grid.items(), key=lambda x: x[0], reverse=True))
-    logger.info(f"Action: {action}")
-    logger.info(f"Size: {size}")
-    logger.info(f"Trade grid: {trade_grid}")
+    action = "BUY" if current_price < last_traded_price else "SELL"
+    trade_grid = determine_trade_grid(nearest_price_in_grid, last_traded_price, grid)
+    size = determine_max_size(current_pos, action, trade_grid)
+    execute_trade_grid(ib, stock_ticker, timeout, action, trade_grid, size)
+    return
+
+
+def execute_trade_grid(
+    ib: IB,
+    stock_ticker: Ticker,
+    timeout: int,
+    action: Literal["BUY", "SELL"],
+    trade_grid: dict[Decimal, Decimal],
+    size: Decimal,
+):
     for price, level_size in trade_grid.items():
         if size <= Decimal(0):
-            break
-        logger.info(f"Price: {price}, Size: {level_size}")
+            return
 
         trade = place_limit_order(ib, stock_ticker, action, size, price)
         if wait_for_order_execution(ib, trade, timeout):
             logger.info(
                 f"Order executed: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
             )
-            break
+            return
         logger.warning(
             f"Order failed to execute fully: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
         )
@@ -223,10 +218,45 @@ def execute_catch_up_trade(
         # Handle any remaining quantity
         size -= Decimal(trade.filled()) + level_size
 
-    if size > 0:
-        logger.warning(
-            f"Order failed to execute fully: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
-        )
-        logger.info(f"Remaining quantity: {size}")
+    logger.warning(
+        f"Order failed to execute fully: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}"
+        f"\nRemaining size: {size}"
+    )
 
-    return
+
+def determine_max_size(
+    current_pos: Decimal,
+    action: Literal["BUY", "SELL"],
+    trade_grid: dict[Decimal, Decimal],
+):
+    size = sum(trade_grid.values())
+    if action == "SELL":
+        size = min(size, current_pos)
+    return size
+
+
+def determine_trade_grid(
+    nearest_price: Decimal,
+    last_traded_price: Decimal,
+    grid: dict[Decimal, Decimal],
+) -> dict[Decimal, Decimal]:
+    trade_grid = {}
+    price_range = sorted(grid.keys())
+    if nearest_price < last_traded_price:
+        trade_grid = {
+            price_range[idx]: grid[price_range[idx]]
+            for idx in range(0, len(price_range))
+            if price_range[idx] >= nearest_price
+            and price_range[idx] <= last_traded_price
+        }
+        trade_grid = dict(sorted(trade_grid.items(), key=lambda x: x[0], reverse=False))
+    if nearest_price > last_traded_price:
+        trade_grid = {
+            price_range[idx]: grid[price_range[idx - 1]]
+            for idx in range(1, len(price_range))
+            if price_range[idx] <= nearest_price
+            and price_range[idx] >= last_traded_price
+        }
+        # sort grid with the highest price first
+        trade_grid = dict(sorted(trade_grid.items(), key=lambda x: x[0], reverse=True))
+    return trade_grid

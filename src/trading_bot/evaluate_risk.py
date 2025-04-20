@@ -5,23 +5,10 @@ from decimal import Decimal
 from ib_async import IB, BarDataList, Contract, Ticker
 
 from grid_calculations import generate_grid
+from get_historical_data import get_historical_data
 
 
 logger = logging.getLogger()
-
-
-def get_historical_data(
-    ib: IB,
-    ticker: Ticker,
-    simulation_bars: str = "30 D",  # Timeframe for intraday simulation (e.g., "1 min", "5 min")
-    bar_size: str = "5 min"
-) -> BarDataList:
-    """Fetch intraday historical data for simulation."""
-    logger.info(f"Fetching {simulation_bars} historical data for {ticker.contract}...")
-    return ib.reqHistoricalData(
-        ticker.contract, "", simulation_bars, bar_size, "TRADES", True
-    )
-
 
 def evaluate_risks(
     grid: dict[
@@ -133,7 +120,7 @@ def evaluate_risks(
 if __name__ == "__main__":
     from ib_connector import connect_to_ibkr, get_stock_ticker
     from logger_config import setup_logger
-    import json
+    from pprint import pprint
 
     ib = connect_to_ibkr("127.0.0.1", 7497, 222, readonly=True)
     stock_name = "BABA"
@@ -141,15 +128,16 @@ if __name__ == "__main__":
     currency = "USD"
     min_price = Decimal("60")
     max_price = Decimal("180.0")
-    max_value_per_level = Decimal("1000")
-    add_value_per_level = Decimal("0")
+    max_value_per_level = Decimal("2000")
+    add_value_per_level = Decimal("-100")
+    min_position_per_level = Decimal("5")
     position_step = Decimal("1")
     fee_per_trade = Decimal("3")
     slippage_per_trade = Decimal("0.01")
-    simulation_days = "1 Y"
-    bar_size = "1 hour"
-    step_range = [2, 5]
-    percent_range = [1,2,3]
+    simulation_days = "10 Y"
+    bar_size = "1 min"
+    step_range = [1, 2]
+    percent_range = [1,2]
 
 
     stock = get_stock_ticker(ib, stock_name, exchange, currency)
@@ -163,11 +151,12 @@ if __name__ == "__main__":
             max_price=max_price,
             min_percentage_step=Decimal(str(percent)),
             step_size=Decimal(str(step)),
-            max_value_per_level=max_value_per_level,
+            start_value_at_min_price=max_value_per_level,
             add_value_per_level=add_value_per_level,
             position_step=position_step,
+            min_position_per_level=min_position_per_level,
         )
-        print(grid)
+        pprint(grid)
         result = evaluate_risks(
             grid=grid,
             ticker=stock,
