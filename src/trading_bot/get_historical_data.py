@@ -4,16 +4,16 @@ import logging
 from pathlib import Path
 from time import sleep
 
-from ib_async import IB, BarData, Ticker
+from ib_async import IB, BarData, Contract, Ticker
 from ib_insync import BarDataList
 
 logger = logging.getLogger()
 
 
-def load_day_cache(cache_path: Path) -> BarDataList:
+def load_day_cache(cache_path: Path) -> BarDataList | None:
     """Load cached data for a single day."""
     if not cache_path.exists():
-        return BarDataList()
+        return None
 
     with open(cache_path, "r") as f:
         cached_data = json.load(f)
@@ -40,8 +40,12 @@ def get_historical_data(
     total_days = parse_duration(total_duration)
 
     # Calculate the requested time range
-    end_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)  # End of today
-    start_date = end_date - timedelta(days=total_days)  # Start date based on total_duration
+    end_date = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )  # End of today
+    start_date = end_date - timedelta(
+        days=total_days
+    )  # Start date based on total_duration
 
     all_bars = BarDataList()
 
@@ -49,15 +53,17 @@ def get_historical_data(
     current_date = end_date
     while current_date > start_date:
         day_start = current_date - timedelta(days=1)
-        cache_key = f"{ticker.contract.symbol}_{day_start.strftime('%Y-%m-%d')}.json"
+
+        # Construct cache path based on contract details
+        cache_key = construct_cache_key(ticker.contract, day_start.date())
         cache_path = Path("historical_data_cache") / cache_key
 
         # Load cached data for the day
         cached_bars = load_day_cache(cache_path)
-        if cached_bars:
-            logger.info(f"Loaded cached data for {day_start.date()}")
+        if cached_bars is not None:
+            logger.debug(f"Loaded cached data for {day_start.date()} ({cache_key})")
         else:
-            logger.info(f"Fetching data for {day_start.date()}...")
+            logger.info(f"Fetching data for {day_start.date()} ({cache_key})...")
             bars = fetch_historical_data_chunk(
                 ib,
                 ticker.contract,
@@ -108,3 +114,24 @@ def parse_duration(duration_str: str) -> int:
         return value * 365  # Approximation for years
     else:
         raise ValueError(f"Unsupported duration unit: {unit}")
+
+
+def construct_cache_key(contract: Contract, date: datetime.date) -> str:
+    """
+    Construct a unique cache key for a contract and date.
+    For stocks: STK/symbol/YYYY-MM-DD.json
+    For options: OPT/symbol/expiry/strike_right/YYYY-MM-DD.json
+    """
+    sec_type = contract.secType.upper()
+    symbol = contract.symbol
+
+    if sec_type == "STK":  # Stock
+        return f"STK/{symbol}/{date}.json"
+    elif sec_type == "OPT":  # Option
+        expiry = contract.lastTradeDateOrContractMonth  # Format: YYYYMMDD
+        expiry_date = datetime.strptime(expiry, "%Y%m%d").date()
+        strike = contract.strike
+        right = contract.right.upper()  # Call or Put
+        return f"OPT/{symbol}/{expiry_date}/{strike}_{right}/{date}.json"
+    else:
+        raise ValueError(f"Unsupported contract type: {sec_type}")

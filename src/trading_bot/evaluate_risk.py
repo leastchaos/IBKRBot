@@ -6,9 +6,11 @@ from ib_async import IB, BarDataList, Contract, Ticker
 
 from grid_calculations import generate_grid
 from get_historical_data import get_historical_data
+from ib_connector import get_option_ticker
 
 
 logger = logging.getLogger()
+
 
 def evaluate_risks(
     grid: dict[
@@ -103,7 +105,6 @@ def evaluate_risks(
     # Estimate ROI
     estimated_roi = (adjusted_profit / loss_at_min_price) * 100
 
-
     return {
         "max_shares": max_shares,
         "max_risk": max_risk,
@@ -126,25 +127,35 @@ if __name__ == "__main__":
     stock_name = "BABA"
     exchange = "SMART"
     currency = "USD"
+    strike = 0
+    expiry = "20250718"
+    right = "C"
     min_price = Decimal("60")
-    max_price = Decimal("180.0")
-    max_value_per_level = Decimal("2000")
+    max_price = Decimal("160.0")
+    max_value_per_level = Decimal("3000")
     add_value_per_level = Decimal("-100")
     min_position_per_level = Decimal("5")
     position_step = Decimal("1")
     fee_per_trade = Decimal("3")
     slippage_per_trade = Decimal("0.01")
-    simulation_days = "10 Y"
+    simulation_days = "1 Y"
     bar_size = "1 min"
-    step_range = [1, 2]
-    percent_range = [1,2]
+    step_range = [2]
+    percent_range = [2]
+    # Select either stock or option
+    ticker = (
+        get_stock_ticker(ib, stock_name, exchange, currency)
+        if strike == 0
+        else get_option_ticker(
+            ib, stock_name, expiry, strike, right, exchange, "", currency
+        )
+    )
 
-
-    stock = get_stock_ticker(ib, stock_name, exchange, currency)
     setup_logger()
     results = []
 
-    historical_data = get_historical_data(ib, stock, simulation_days, bar_size)
+    historical_data = get_historical_data(ib, ticker, simulation_days, bar_size)
+    # print(historical_data)
     for step, percent in product(step_range, percent_range):
         grid = generate_grid(
             min_price=min_price,
@@ -159,7 +170,7 @@ if __name__ == "__main__":
         pprint(grid)
         result = evaluate_risks(
             grid=grid,
-            ticker=stock,
+            ticker=ticker,
             historical_data=historical_data,
             fee_per_trade=fee_per_trade,
             slippage_per_trade=slippage_per_trade,

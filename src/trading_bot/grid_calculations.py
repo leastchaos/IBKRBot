@@ -117,13 +117,14 @@ if __name__ == "__main__":
     setup_logger()
 
     grid = generate_grid(
-        min_price=Decimal("60"),
-        max_price=Decimal("160.0"),
-        min_percentage_step=Decimal("2"),
-        step_size=Decimal("2"),
+        min_price=Decimal("0"),
+        max_price=Decimal("10.0"),
+        min_percentage_step=Decimal("10"),
+        step_size=Decimal("0.5"),
         start_value_at_min_price=Decimal("1000"),
         add_value_per_level=Decimal("0"),
         position_step=Decimal("1"),
+        min_position_per_level=Decimal("1"),
     )
     pprint(grid)
     buy_prices, sell_prices = get_current_grid_buy_and_sell_levels(
