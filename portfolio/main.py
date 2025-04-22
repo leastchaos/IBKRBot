@@ -58,7 +58,7 @@ def main(
 ) -> None:
     setup_logger()
     ib = IB()
-    ib.connect("127.0.0.1", 7496, clientId=1)
+    ib.connect("127.0.0.1", 7496, clientId=10)
 
     try:
         while True:
