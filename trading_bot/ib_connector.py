@@ -24,6 +24,7 @@ def get_stock_ticker(
             if not math.isnan(ticker.marketPrice()):
                 logger.info(f"Subscription loaded. Market price: {ticker.marketPrice()}")
                 break
+            logger.info("Waiting for subscription to load...")
             ib.sleep(1)
         return ticker
     return None
@@ -58,7 +59,7 @@ def get_option_chain(ib: IB, contract: Contract) -> list[Option]:
     return ib.reqSecDefOptParams(contract.symbol, "", "STK", contract.conId)
 
 
-def get_current_position(ib: IB, stock_ticker: Stock) -> Decimal:
+def get_current_position(ib: IB, stock_ticker: Ticker) -> Decimal:
     current_pos = next(
         (
             pos.position

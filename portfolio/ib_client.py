@@ -57,6 +57,8 @@ def fetch_balance(ib_client: IB) -> pd.DataFrame:
     df = pd.DataFrame.from_dict(account_data, orient="index")
     df.index.name = "Account"
     df.reset_index(inplace=True)
+    # shift NetLiquidation in the first column
+    df.insert(0, "NetLiquidation", df.pop("NetLiquidation"))
     logger.info(df)
     logger.info("Account data fetched successfully.")
     return df

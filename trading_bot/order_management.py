@@ -53,6 +53,7 @@ def cancel_out_of_range_orders(
                 )
                 ib.cancelOrder(order.order)
 
+
 def process_orders(
     ib: IB,
     contract: Contract,
@@ -200,6 +201,7 @@ def execute_catch_up_trade_grid(
     trade = None
     for price, level_size in trade_grid.items():
         if size <= Decimal(0):
+            logger.info("No more orders to execute.")
             return
 
         trade = place_limit_order(ib, stock_ticker, action, size, price)
@@ -247,16 +249,14 @@ def determine_catch_up_trade_grid(
         trade_grid = {
             price_range[idx]: grid[price_range[idx]]
             for idx in range(0, len(price_range))
-            if price_range[idx] > current_price
-            and price_range[idx] < last_traded_price
+            if price_range[idx] > current_price and price_range[idx] < last_traded_price
         }
         trade_grid = dict(sorted(trade_grid.items(), key=lambda x: x[0], reverse=False))
     if current_price > last_traded_price:
         trade_grid = {
             price_range[idx]: grid[price_range[idx - 1]]
             for idx in range(1, len(price_range))
-            if price_range[idx] < current_price
-            and price_range[idx] > last_traded_price
+            if price_range[idx] < current_price and price_range[idx] > last_traded_price
         }
         # sort grid with the highest price first
         trade_grid = dict(sorted(trade_grid.items(), key=lambda x: x[0], reverse=True))

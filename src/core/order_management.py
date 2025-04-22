@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Literal
 from ib_async import IB, Contract, LimitOrder, Ticker, Trade
 import logging
@@ -96,14 +97,18 @@ def execute_oca_orders(
         trades[oca_order] = trade
     return trades
 
+
+class OCAType(Enum):
+    CANCEL_ALL = 1
+    REDUCE_WITH_BLOCK = 2
+    REDUCE_WITH_NO_BLOCK = 3
 def create_oca_order(
     contract: Contract,
     action: Literal["BUY", "SELL"],
     size: Decimal,
     price: Decimal,
-    limit_price: Decimal,
-    quantity: Decimal,
     oca_group: str,
+    oca_type: OCAType
     
 ) -> OCAOrder:
     return OCAOrder(
@@ -114,9 +119,7 @@ def create_oca_order(
             lmtPrice=float(price),  # Convert Decimal to float for IB API
             tif="GTC",  # Good-Till-Cancelled
             outsideRth=True,  # Allow trading outside regular trading hours
-           ocaGroup=limit_price,
-            ocaType=1,
-            ocaQty=float(quantity),
+           ocaGroup=oca_group,
+            ocaType=oca_type.value,
         ),
-    )   
-)
+    )

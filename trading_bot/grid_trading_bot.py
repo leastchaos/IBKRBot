@@ -1,3 +1,4 @@
+import math
 from pprint import pprint
 import random
 from ib_async import ExecutionFilter
@@ -93,7 +94,7 @@ def run_grid_bot(
     # pprint(risks)
     if not (current_price := stock_ticker.marketPrice()):
         raise ValueError("Invalid stock price at initialization")
-    if current_price == float("nan"):
+    if math.isnan(current_price):
         raise ValueError(f"Invalid stock price at initialization: {current_price}")
     logger.info(f"Current price: {current_price}")
     current_price = Decimal(str(current_price))  # Decimal(str(110.5))
@@ -121,7 +122,6 @@ def run_grid_bot(
             if not (current_price := stock_ticker.marketPrice()):
                 logger.warning("Invalid stock price")
                 continue
-            print(stock_ticker.ask)
             logger.info(f"Current price: {current_price}")
             current_price = Decimal(str(current_price))  # Decimal(str(110.5))
 
@@ -177,7 +177,7 @@ if __name__ == "__main__":
         account="",
         readonly=True,
         symbol="BABA",
-        exchange="SMART",
+        exchange="NASDAQ",
         currency="USD",
         min_price=Decimal("60"),
         max_price=Decimal("180"),
@@ -191,6 +191,6 @@ if __name__ == "__main__":
         loop_interval=10,
         catchup_trade_interval=60,
         trade_history_file="trade_history.json",
-        req_market_data_type=2,
+        req_market_data_type=1,
         ensure_no_short_position=True,
     )
