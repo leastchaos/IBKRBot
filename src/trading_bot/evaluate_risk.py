@@ -1,3 +1,4 @@
+from datetime import datetime
 from itertools import product
 import logging
 from decimal import Decimal
@@ -123,25 +124,37 @@ if __name__ == "__main__":
     from logger_config import setup_logger
     from pprint import pprint
 
-    ib = connect_to_ibkr("127.0.0.1", 7497, 222, readonly=True)
+    ib = connect_to_ibkr("127.0.0.1", 7497, 222, readonly=True, account="")
     stock_name = "BABA"
     exchange = "SMART"
     currency = "USD"
     strike = 0
     expiry = "20250718"
     right = "C"
-    min_price = Decimal("60")
-    max_price = Decimal("160.0")
-    max_value_per_level = Decimal("3000")
-    add_value_per_level = Decimal("-100")
+    min_price = Decimal("0.5")
+    max_price = Decimal("180.0")
     min_position_per_level = Decimal("5")
     position_step = Decimal("1")
     fee_per_trade = Decimal("3")
     slippage_per_trade = Decimal("0.01")
     simulation_days = "1 Y"
     bar_size = "1 min"
-    step_range = [2]
-    percent_range = [2]
+    step_range = [1, 2]
+    percent_range = [1, 2, 3, 4, 5]
+    max_value_range = [
+        Decimal("1000"),
+        Decimal("2000"),
+        Decimal("4000"),
+        Decimal("5000"),
+        Decimal("10000"),
+    ]
+    add_value_range = [
+        Decimal("-100"),
+        Decimal("-200"),
+        Decimal("-500"),
+        Decimal("-1000"),
+    ]
+
     # Select either stock or option
     ticker = (
         get_stock_ticker(ib, stock_name, exchange, currency)
@@ -156,7 +169,9 @@ if __name__ == "__main__":
 
     historical_data = get_historical_data(ib, ticker, simulation_days, bar_size)
     # print(historical_data)
-    for step, percent in product(step_range, percent_range):
+    for step, percent, max_value_per_level, add_value_per_level in product(
+        step_range, percent_range, max_value_range, add_value_range
+    ):
         grid = generate_grid(
             min_price=min_price,
             max_price=max_price,
@@ -167,7 +182,7 @@ if __name__ == "__main__":
             position_step=position_step,
             min_position_per_level=min_position_per_level,
         )
-        pprint(grid)
+        # pprint(grid)
         result = evaluate_risks(
             grid=grid,
             ticker=ticker,
@@ -179,9 +194,13 @@ if __name__ == "__main__":
             continue
         result["step_size"] = step
         result["percentage_step"] = percent
+        result["value_per_level"] = max_value_per_level
+        result["add_value_per_level"] = add_value_per_level
         results.append(result)
     import pandas as pd
     from pprint import pprint
 
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.max_rows", None)
     df = pd.DataFrame(results).sort_values("profit/drawdown", ascending=False)
-    pprint(df)
+    df.to_csv(f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", index=False)

@@ -55,10 +55,7 @@ def get_current_position_index(
     current_price: Decimal, grid: dict[Decimal, Decimal]
 ) -> int:
     grid_levels = sorted(list(grid.keys()))
-    return (
-        next((i for i, price in enumerate(grid_levels) if price >= current_price), 0)
-        - 1
-    )
+    return next((i for i, price in enumerate(grid_levels) if price >= current_price), 0)
 
 
 def get_current_grid_buy_and_sell_levels(
@@ -70,13 +67,13 @@ def get_current_grid_buy_and_sell_levels(
 ) -> tuple[dict[Decimal, Decimal], dict[Decimal, Decimal]]:
     """Calculate buy and sell grid levels using Decimal."""
     nearest_price = min(grid.keys(), key=lambda x: abs(x - last_traded_price))
-    grid_index = get_current_position_index(nearest_price, grid) + 1
+    grid_index = get_current_position_index(nearest_price, grid)
     logger.info(f"Current price: {last_traded_price}, Grid index: {grid_index}")
     price_range = sorted(grid.keys())
     target_position = calculate_target_position(last_traded_price, grid)
-    additional_buy = max(0, target_position - current_position) // grid_index
-    additional_sell = max(0, current_position - target_position) // (
-        len(price_range) - grid_index
+    additional_buy = max(0, target_position - current_position) // max(1, grid_index)
+    additional_sell = max(0, current_position - target_position) // max(
+        1, (len(price_range) - grid_index)
     )
     logger.info(
         f"Current position: {current_position}, Target position: {target_position}, Additional buy: {additional_buy}, Additional sell: {additional_sell}"
@@ -127,20 +124,20 @@ if __name__ == "__main__":
     setup_logger()
 
     grid = generate_grid(
-        min_price=Decimal("0"),
+        min_price=Decimal("1"),
         max_price=Decimal("10.0"),
         min_percentage_step=Decimal("10"),
         step_size=Decimal("0.5"),
-        start_value_at_min_price=Decimal("1000"),
+        start_value_at_min_price=Decimal("100"),
         add_value_per_level=Decimal("0"),
         position_step=Decimal("1"),
         min_position_per_level=Decimal("1"),
     )
     pprint(grid)
     buy_prices, sell_prices = get_current_grid_buy_and_sell_levels(
-        last_traded_price=Decimal("100.5"),
+        last_traded_price=Decimal("5"),
         grid=grid,
         active_levels=1,
-        current_position=Decimal("0"),
+        current_position=Decimal("200"),
         ensure_no_short_position=True,
     )

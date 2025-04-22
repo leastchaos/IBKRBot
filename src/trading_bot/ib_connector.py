@@ -1,12 +1,15 @@
 from decimal import Decimal
 from typing import Literal
 from ib_async import IB, Contract, Option, Stock, Ticker
+import math
+import logging
 
+logger=logging.getLogger()
 
-def connect_to_ibkr(host: str, port: int, client_id: int, readonly: bool) -> IB:
+def connect_to_ibkr(host: str, port: int, client_id: int, readonly: bool, account: str) -> IB:
     """Connect to Interactive Brokers."""
     ib = IB()
-    ib.connect(host, port, client_id, readonly=readonly)
+    ib.connect(host, port, client_id, readonly=readonly, account=account)
     return ib
 
 
@@ -16,7 +19,13 @@ def get_stock_ticker(
     """Get stock ticker from IB."""
     contract = Stock(symbol, exchange, currency)
     if qualified := ib.qualifyContracts(contract):
-        return ib.reqMktData(qualified[0], "101")
+        ticker = ib.reqMktData(qualified[0], "101")
+        for _ in range(10):
+            if not math.isnan(ticker.marketPrice()):
+                logger.info(f"Subscription loaded. Market price: {ticker.marketPrice()}")
+                break
+            ib.sleep(1)
+        return ticker
     return None
 
 

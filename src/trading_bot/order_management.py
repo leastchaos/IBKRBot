@@ -25,11 +25,9 @@ def manage_orders(
     contract: Stock,
     buy_levels: dict[Decimal, Decimal],
     sell_levels: dict[Decimal, Decimal],
-    step_size: Decimal,
 ) -> None:
     """Manage buy and sell orders using Decimal."""
-    min_price, max_price = min(buy_levels.keys()), max(sell_levels.keys())
-    cancel_out_of_range_orders(ib, contract, min_price, max_price, step_size)
+    cancel_out_of_range_orders(ib, contract, buy_levels, sell_levels)
 
     buy_orders, sell_orders = fetch_existing_orders(ib, contract)
     process_orders(ib, contract, "BUY", buy_levels, buy_orders)
@@ -39,27 +37,21 @@ def manage_orders(
 def cancel_out_of_range_orders(
     ib: IB,
     contract: Contract,
-    min_price: Decimal,
-    max_price: Decimal,
-    step_size: Decimal,
+    buy_levels: dict[Decimal, Decimal],
+    sell_levels: dict[Decimal, Decimal],
 ) -> None:
     """Cancel out-of-range orders using Decimal."""
     # Generate valid price range using Decimal arithmetic
-    valid_prices = [
-        min_price + i * step_size
-        for i in range(int((max_price - min_price) / step_size) + 1)
-    ]
-
     # Cancel out-of-range orders
     for order in ib.reqAllOpenOrders():
         if order.contract.conId == contract.conId:
             price = Decimal(str(order.order.lmtPrice))
-            if price not in valid_prices:
+            levels = buy_levels if order.order.action == "BUY" else sell_levels
+            if price not in levels:
                 logger.info(
                     f"Cancelling out-of-range {order.order.action} order @ {price}"
                 )
                 ib.cancelOrder(order.order)
-
 
 def process_orders(
     ib: IB,

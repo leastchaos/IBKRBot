@@ -30,6 +30,7 @@ def run_grid_bot(
     port: int,
     client_id: int,
     readonly: bool,
+    account: str,
     symbol: str,
     exchange: str,
     currency: str,
@@ -53,7 +54,7 @@ def run_grid_bot(
 ) -> None:
     """Run the grid trading bot using Decimal."""
     getcontext().prec = decimal_precision  # Adjust precision as needed
-    ib = connect_to_ibkr(host, port, client_id, readonly)
+    ib = connect_to_ibkr(host, port, client_id, readonly, account)
     ib.reqMarketDataType(req_market_data_type)
     stock_ticker = get_stock_ticker(ib, symbol, exchange, currency)
     if not stock_ticker:
@@ -82,17 +83,19 @@ def run_grid_bot(
         min_position_per_level=min_position_per_level,
     )
     historical_data = get_historical_data(ib, stock_ticker, "30 D", "1 min")
-    risks = evaluate_risks(
-        grid=grid,
-        ticker=stock_ticker,
-        historical_data=historical_data,
-        fee_per_trade=fee_per_trade,
-        slippage_per_trade=slippage_per_trade,
-    )
-    pprint(risks)
-    # Get current price
+    # risks = evaluate_risks(
+    #     grid=grid,
+    #     ticker=stock_ticker,
+    #     historical_data=historical_data,
+    #     fee_per_trade=fee_per_trade,
+    #     slippage_per_trade=slippage_per_trade,
+    # )
+    # pprint(risks)
     if not (current_price := stock_ticker.marketPrice()):
         raise ValueError("Invalid stock price at initialization")
+    if current_price == float("nan"):
+        raise ValueError(f"Invalid stock price at initialization: {current_price}")
+    logger.info(f"Current price: {current_price}")
     current_price = Decimal(str(current_price))  # Decimal(str(110.5))
 
     last_traded_price = last_traded_prices.get(
@@ -118,6 +121,8 @@ def run_grid_bot(
             if not (current_price := stock_ticker.marketPrice()):
                 logger.warning("Invalid stock price")
                 continue
+            print(stock_ticker.ask)
+            logger.info(f"Current price: {current_price}")
             current_price = Decimal(str(current_price))  # Decimal(str(110.5))
 
             current_pos = get_current_position(ib, stock_ticker)
@@ -151,7 +156,6 @@ def run_grid_bot(
                 contract=stock_ticker.contract,
                 buy_levels=buy_levels,
                 sell_levels=sell_levels,
-                step_size=step_size,
             )
 
             logger.info(
@@ -170,22 +174,23 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=7497,
         client_id=200,
-        readonly=False,
+        account="",
+        readonly=True,
         symbol="BABA",
         exchange="SMART",
         currency="USD",
-        min_price=Decimal("60.0"),
-        max_price=Decimal("180.0"),
-        step_size=Decimal("2"),
-        min_percentage_step=Decimal("2"),
-        start_value_at_min_price=Decimal("1000"),
-        add_value_per_level=Decimal("0"),
-        min_position_per_level=Decimal("10"),
-        position_step=1,
+        min_price=Decimal("60"),
+        max_price=Decimal("180"),
+        step_size=Decimal("0.2"),
+        min_percentage_step=Decimal("0"),
+        start_value_at_min_price=Decimal("4000"),
+        add_value_per_level=Decimal("-200"),
+        min_position_per_level=Decimal("5"),
+        position_step=Decimal("1"),
         active_levels=5,
         loop_interval=10,
         catchup_trade_interval=60,
         trade_history_file="trade_history.json",
-        req_market_data_type=4,
+        req_market_data_type=2,
         ensure_no_short_position=True,
     )
