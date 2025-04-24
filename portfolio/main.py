@@ -1,4 +1,5 @@
 import logging
+import random
 import time
 import keyboard  # New dependency for key detection
 from tqdm import tqdm  # New dependency for progress bar
@@ -13,7 +14,7 @@ logger = logging.getLogger()
 
 def connect_to_ib() -> IB:
     ib = IB()
-    ib.connect("127.0.0.1", 7496, clientId=1, readonly=True)
+    ib.connect("127.0.0.1", 7496, clientId=random.randint(1, 1000), readonly=True)
     return ib
 
 def update_data(

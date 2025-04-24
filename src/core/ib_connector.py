@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+import random
 from typing import Literal
 from ib_async import IB, Contract, Option, OptionChain, Stock, Ticker
 import math
@@ -17,7 +19,17 @@ def connect_to_ibkr(
     """Connect to Interactive Brokers."""
     ib = IB()
     ib.connect(host, port, client_id, readonly=readonly, account=account)
+    ib.account = account
     return ib
+
+
+def wait_for_subscription(ib: IB, ticker: Ticker, timeout: int = 10) -> None:
+    for _ in range(timeout):
+        if not math.isnan(ticker.marketPrice()):
+            logger.info(f"Subscription loaded. Market price: {Decimal(str(ticker.marketPrice()))}")
+            return
+        logger.info("Waiting for subscription to load...")
+        ib.sleep(1)
 
 
 def get_stock_ticker(
@@ -27,14 +39,7 @@ def get_stock_ticker(
     contract = Stock(symbol, exchange, currency)
     if qualified := ib.qualifyContracts(contract):
         ticker = ib.reqMktData(qualified[0], "101")
-        for _ in range(timeout):
-            if not math.isnan(ticker.marketPrice()):
-                logger.info(
-                    f"Subscription loaded. Market price: {ticker.marketPrice()}"
-                )
-                break
-            logger.info("Waiting for subscription to load...")
-            ib.sleep(1)
+        wait_for_subscription(ib, ticker, timeout)
         return ticker
     return None
 
@@ -48,6 +53,7 @@ def get_option_ticker(
     exchange: str = "",
     multiplier: int = "",
     currency: str = "",
+    timeout: int = 10,
 ) -> Ticker | None:
     """Get option ticker from IB."""
     contract = Option(
@@ -60,11 +66,41 @@ def get_option_ticker(
         currency,
     )
     if qualified := ib.qualifyContracts(contract):
-        return ib.reqMktData(qualified[0], "101")
+        ticker = ib.reqMktData(qualified[0], "101")
+        if timeout > 0:
+            wait_for_subscription(ib, ticker, timeout)
+        return ticker
     return None
 
 
+def get_option_ticker_from_contract(
+    ib: IB, contract: Contract, timeout: int = 0, include_depth: bool = False
+) -> Ticker | None:
+    if qualified := ib.qualifyContracts(contract):
+        logger.debug(f"Qualified contract: {qualified[0]}")
+        ticker = ib.reqMktData(qualified[0], "101")
+
+        if include_depth:
+            ticker = ib.reqMktDepth(qualified[0], numRows=5, isSmartDepth=True)
+        if timeout > 0:
+            wait_for_subscription(ib, ticker, timeout)
+        return ticker
+    return None
+
+
+def get_option_ticker_depth_from_contract(
+    ib: IB, contract: Contract, timeout: int = 0
+) -> Ticker | None:
+    if qualified := ib.qualifyContracts(contract):
+        logger.debug(f"Qualified contract: {qualified[0]}")
+        ticker = ib.reqMktDepth(qualified[0], numRows=5, isSmartDepth=True)
+        if timeout > 0:
+            wait_for_subscription(ib, ticker, timeout)
+        return ticker
+
+
 def get_option_chain(ib: IB, contract: Contract) -> list[OptionChain]:
+    logger.info(f"Retrieving option chain for {contract.symbol}")
     return ib.reqSecDefOptParams(contract.symbol, "", "STK", contract.conId)
 
 
@@ -155,12 +191,12 @@ def get_options(
     return qualified_options
 
 
-def get_current_position(ib: IB, stock_ticker: Stock) -> Decimal:
+def get_current_position(ib: IB, contract: Contract) -> Decimal:
     current_pos = next(
         (
             pos.position
             for pos in ib.positions()
-            if pos.contract.conId == stock_ticker.conId
+            if pos.contract.conId == contract.conId
         ),
         0,
     )

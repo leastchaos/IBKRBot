@@ -5,6 +5,8 @@ from ib_async import IB, Contract, LimitOrder, Ticker, Trade
 import logging
 from decimal import Decimal
 
+from src.models.models import OCAOrder, OCAType
+
 logger = logging.getLogger()
 
 
@@ -81,11 +83,6 @@ def cancel_all_orders(ib: IB, contract: Contract) -> None:
     logger.info(f"All orders in {contract.symbol} canceled.")
 
 
-@dataclass(frozen=True)
-class OCAOrder:
-    contract: Contract
-    order: LimitOrder
-
 def execute_oca_orders(
     ib: IB,
     oca_orders: list[OCAOrder],
@@ -93,23 +90,17 @@ def execute_oca_orders(
     trades = {}
     for oca_order in oca_orders:
         trade = ib.placeOrder(oca_order.contract, oca_order.order)
-        logger.info(f"Placed {oca_order.order.action} GTC order: {oca_order.order.totalQuantity} @ {oca_order.order.lmtPrice}")
         trades[oca_order] = trade
     return trades
 
 
-class OCAType(Enum):
-    CANCEL_ALL = 1
-    REDUCE_WITH_BLOCK = 2
-    REDUCE_WITH_NO_BLOCK = 3
 def create_oca_order(
     contract: Contract,
     action: Literal["BUY", "SELL"],
     size: Decimal,
     price: Decimal,
     oca_group: str,
-    oca_type: OCAType
-    
+    oca_type: OCAType,
 ) -> OCAOrder:
     return OCAOrder(
         contract=contract,
@@ -119,7 +110,11 @@ def create_oca_order(
             lmtPrice=float(price),  # Convert Decimal to float for IB API
             tif="GTC",  # Good-Till-Cancelled
             outsideRth=True,  # Allow trading outside regular trading hours
-           ocaGroup=oca_group,
+            ocaGroup=oca_group,
             ocaType=oca_type.value,
         ),
     )
+
+
+def round_to_tick(price: Decimal, tick_size: Decimal) -> Decimal:
+    return round(price / tick_size) * tick_size
