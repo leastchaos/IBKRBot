@@ -18,7 +18,8 @@ from order_management import execute_catch_up_trade, manage_orders
 from decimal import Decimal, getcontext
 
 from notifications import send_email_alert
-from evaluate_risk import evaluate_risks, get_historical_data, evaluate_risks
+from evaluate_risk import evaluate_risks, get_historical_data
+from src.utils.helpers import get_ibkr_account
 
 # Set global precision for Decimal
 
@@ -84,14 +85,14 @@ def run_grid_bot(
         min_position_per_level=min_position_per_level,
     )
     historical_data = get_historical_data(ib, stock_ticker, "30 D", "1 min")
-    # risks = evaluate_risks(
-    #     grid=grid,
-    #     ticker=stock_ticker,
-    #     historical_data=historical_data,
-    #     fee_per_trade=fee_per_trade,
-    #     slippage_per_trade=slippage_per_trade,
-    # )
-    # pprint(risks)
+    risks = evaluate_risks(
+        grid=grid,
+        ticker=stock_ticker,
+        historical_data=historical_data,
+        fee_per_trade=fee_per_trade,
+        slippage_per_trade=slippage_per_trade,
+    )
+    pprint(risks)
     if not (current_price := stock_ticker.marketPrice()):
         raise ValueError("Invalid stock price at initialization")
     if math.isnan(current_price):
@@ -170,11 +171,12 @@ def run_grid_bot(
 
 
 if __name__ == "__main__":
+    account = get_ibkr_account("mass_buy_options")
     run_grid_bot(
         host="127.0.0.1",
         port=7496,
         client_id=200,
-        account="",
+        account=account,
         readonly=False,
         symbol="BABA",
         exchange="SMART",

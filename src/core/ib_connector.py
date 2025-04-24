@@ -1,8 +1,5 @@
-from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
-import random
 from typing import Literal
 from ib_async import IB, Contract, Option, OptionChain, Stock, Ticker
 import math

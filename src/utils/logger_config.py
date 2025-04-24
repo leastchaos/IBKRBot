@@ -29,6 +29,4 @@ def setup_logger(level=logging.INFO) -> logging.Logger:
     logger.addHandler(stream_handler)
 
     logging.getLogger("ib_async").setLevel(logging.WARNING)
-    # logging.getLogger("gspread").setLevel(logging.WARNING)
-    # logging.getLogger("gspread_dataframe").setLevel(logging.WARNING)
     return logger

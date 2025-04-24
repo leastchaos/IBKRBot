@@ -1,14 +1,10 @@
 from decimal import Decimal
-from enum import Enum
 import logging
-import random
-from ib_async import IB, Contract, LimitOrder, Option, Stock, Ticker, Trade
+from ib_async import IB, LimitOrder, Stock, Ticker, Trade
 
 from src.core.order_management import execute_oca_orders, round_to_tick
 from src.core.ib_connector import (
     get_current_position,
-    get_option_ticker,
-    get_option_ticker_depth_from_contract,
     get_option_ticker_from_contract,
     get_options,
     wait_for_subscription,
@@ -151,7 +147,7 @@ def mass_trade_oca_option(
     min_distance: Decimal,
     oca_group: str,
     oca_type: OCAType,
-    prevent_short_positions: bool,
+    close_positions_only: bool,
     depth: int,
     min_update_size: Decimal,
     loop_interval: int,
@@ -195,15 +191,23 @@ def mass_trade_oca_option(
                 f"Unable to determine price for {option_display(option)}. Using strike price or min tick."
             )
 
-        if prevent_short_positions and action == Action.SELL:
+        if close_positions_only:
             current_pos = get_current_position(exec_ib, option_ticker.contract)
             logger.info(f"Current position for {option_display(option)}: {current_pos}")
-            if current_pos <= 0:
-                logger.info(
-                    f"Skipping {option_display(option)} because current position is {current_pos}"
-                )
-                continue
-            option_size = min(option_size, current_pos)
+            if action == Action.SELL:
+                if current_pos <= 0:
+                    logger.info(
+                        f"Skipping {option_display(option)} because current position is {current_pos}"
+                    )
+                    continue
+                option_size = min(option_size, current_pos)
+            if action == Action.BUY:
+                if current_pos >= 0:
+                    logger.info(
+                        f"Skipping {option_display(option)} because current position is {current_pos}"
+                    )
+                    continue
+                option_size = min(option_size, -current_pos)
 
         order = LimitOrder(
             action=action.value,
@@ -213,7 +217,7 @@ def mass_trade_oca_option(
             ocaGroup=oca_group,
             ocaType=oca_type.value,
             tif="Day",
-            account=exec_ib.account, # custom attribute
+            account=exec_ib.account,  # custom attribute
         )
         oca_order = OCAOrder(contract=option, order=order)
         logger.info(
@@ -253,13 +257,14 @@ def mass_trade_oca_option(
 
 if __name__ == "__main__":
     from src.utils.logger_config import setup_logger
+    from src.utils.helpers import get_ibkr_account
     from src.core.ib_connector import connect_to_ibkr, get_stock_ticker
     from datetime import datetime
 
     setup_logger()
-
-    # exec_ib = connect_to_ibkr("127.0.0.1", 7497, 222, readonly=True, account="")
-    exec_ib = connect_to_ibkr("127.0.0.1", 7496, 10, readonly=False, account="")
+    account = get_ibkr_account("mass_buy_options")
+    exec_ib = connect_to_ibkr("127.0.0.1", 7497, 222, readonly=True, account="")
+    # exec_ib = connect_to_ibkr("127.0.0.1", 7496, 333, readonly=False, account=account)
     ib = connect_to_ibkr("127.0.0.1", 7496, 222, readonly=True, account="")
     ib.reqMarketDataType(1)
     stock = Stock("9988", "", "HKD")
@@ -277,7 +282,7 @@ if __name__ == "__main__":
         min_distance=Decimal("0.5"),
         oca_group=f"Mass Trade {datetime.now().strftime('%Y%m%d %H:%M:%S')}",
         oca_type=OCAType.REDUCE_WITH_NO_BLOCK,
-        prevent_short_positions=False,
+        close_positions_only=False,
         depth=5,
         loop_interval=5,
         aggresive=True,

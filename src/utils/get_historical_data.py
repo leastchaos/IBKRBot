@@ -2,7 +2,6 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 from pathlib import Path
-from time import sleep
 
 from ib_async import IB, BarData, Contract, Ticker
 from ib_insync import BarDataList

@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-from enum import Enum
 from typing import Literal
 from ib_async import IB, Contract, LimitOrder, Ticker, Trade
 import logging
