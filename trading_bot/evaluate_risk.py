@@ -128,10 +128,10 @@ if __name__ == "__main__":
     stock_name = "2800"
     exchange = ""
     currency = "HKD"
-    strike = 0
-    expiry = "20250718"
+    strike = 22
+    expiry = "20250429"
     right = "C"
-    min_price = Decimal("0.4")
+    min_price = Decimal("0.2")
     max_price = Decimal("6.0")
     min_position_per_level = Decimal("1")
     position_step = Decimal("1")
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     slippage_per_trade = Decimal("0.01")
     simulation_days = "1 Y"
     bar_size = "1 min"
-    step_range = [0.2]
+    step_range = [0.02]
     percent_range = [50, 100]
     max_value_range = [
         Decimal("1000"),
@@ -197,3 +197,4 @@ if __name__ == "__main__":
     pd.set_option("display.max_rows", None)
     df = pd.DataFrame(results).sort_values("profit/drawdown", ascending=False)
     df.to_csv(f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", index=False)
+    pprint(df)

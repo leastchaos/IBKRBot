@@ -1,5 +1,6 @@
 from decimal import Decimal
 import logging
+from math import isnan
 from ib_async import IB, LimitOrder, Stock, Ticker, Trade
 
 from src.core.order_management import execute_oca_orders, round_to_tick
@@ -24,6 +25,8 @@ def determine_price(
     depth: int,
     aggressive: bool,
     volatility: float,
+    min_ask_price: Decimal,
+    max_bid_price: Decimal,
     manual_min_tick: Decimal | None = None,
     order: Trade | None = None,
     timeout: int = 5,
@@ -55,7 +58,7 @@ def determine_price(
             f"Calculated price: {calculated_price}, max_price: {max_price}, "
             f"depth_bid: {depth_bid}"
         )
-        price = min(depth_bid, max_price, calculated_price)
+        price = min(depth_bid, max_price, calculated_price, max_bid_price)
         logger.info(f"price: {price}")
 
     if action == Action.SELL:
@@ -67,7 +70,7 @@ def determine_price(
         if depth_ask < Decimal("0"):
             logger.info("No depth found")
             return Decimal("-1")
-        price = max(depth_ask, min_price, calculated_price)
+        price = max(depth_ask, min_price, calculated_price, min_ask_price)
         logger.info(f" price: {price}")
 
     if price < Decimal("0"):
@@ -113,6 +116,8 @@ def manage_open_order(
     min_update_size: Decimal,
     volatility: float,
     aggressive: bool,
+    min_ask_price: Decimal,
+    max_ask_price: Decimal,
     manual_min_tick: Decimal | None,
 ) -> None:
     """Manage the open order."""
@@ -125,6 +130,8 @@ def manage_open_order(
         depth=depth,
         order=order,
         volatility=volatility,
+        min_ask_price=min_ask_price,
+        max_bid_price=max_ask_price,
         aggressive=aggressive,
         manual_min_tick=manual_min_tick,
     )
@@ -140,6 +147,43 @@ def manage_open_order(
         )
         order.order.lmtPrice = price
         exec_ib.placeOrder(order.contract, order.order)
+
+
+def check_if_price_too_far(
+    action: Action,
+    option_ticker: Ticker,
+    min_ask_price: Decimal,
+    max_bid_price: Decimal,
+) -> bool:
+    if action == Action.BUY:
+        bid_price = Decimal(
+            str(
+                (
+                    option_ticker.bid
+                    if not isnan(option_ticker.bid)
+                    else option_ticker.minTick
+                )
+            )
+        )
+        if bid_price > Decimal("1.2") * max_bid_price:
+            logger.info(
+                f"Current bid price {bid_price} too far above max_buy_price {max_bid_price}"
+            )
+            return True
+    if action == Action.SELL:
+        ask_price = Decimal(
+            str(
+                option_ticker.ask
+                if not isnan(option_ticker.ask)
+                else option_ticker.contract.strike
+            )
+        )
+        if ask_price < Decimal("0.8") * min_ask_price:
+            logger.info(
+                f"Current ask price {ask_price} too far below min_sell_price {min_ask_price}"
+            )
+            return True
+    return False
 
 
 def mass_trade_oca_option(
@@ -161,6 +205,8 @@ def mass_trade_oca_option(
     loop_interval: int,
     volatility: float,
     aggresive: bool,
+    min_ask_price: Decimal,
+    max_bid_price: Decimal,
     manual_min_tick: Decimal | None,
     exec_ib: IB | None = None,  # in order to use data from account with subscriptions
 ) -> None:
@@ -168,7 +214,7 @@ def mass_trade_oca_option(
     if exec_ib is None:
         exec_ib = ib
     options = get_options(ib, stock, [right], min_dte, max_dte, min_strike, max_strike)
-    oca_orders = []
+    oca_orders: list[OCAOrder] = []
     stock_ticker = get_stock_ticker(ib, stock.symbol, stock.exchange, stock.currency)
     options_tickers = {
         option.conId: get_option_ticker_from_contract(
@@ -208,7 +254,16 @@ def mass_trade_oca_option(
             volatility=volatility,
             aggressive=aggresive,
             manual_min_tick=manual_min_tick,
+            min_ask_price=min_ask_price,
+            max_bid_price=max_bid_price,
         )
+        if check_if_price_too_far(
+            action=action,
+            option_ticker=option_ticker,
+            min_ask_price=min_ask_price,
+            max_bid_price=max_bid_price,
+        ):
+            continue
         if price < Decimal("0"):
             price = (
                 Decimal(str(option_ticker.contract.strike))
@@ -218,6 +273,8 @@ def mass_trade_oca_option(
             logger.warning(
                 f"Unable to determine price for {option_display(option)}. Using strike price or min tick."
             )
+        # skip if current bid price is too far above max_buy_price to be triggered
+
         order = LimitOrder(
             action=action.value,
             totalQuantity=float(option_size),
@@ -236,7 +293,16 @@ def mass_trade_oca_option(
             f"Placing {action.value} order: {oca_order.order.totalQuantity} @ {oca_order.order.lmtPrice}"
         )
         oca_orders.append(oca_order)
-    input("Check orders and press enter to continue...")
+    try:
+        input("Check orders and press enter to continue...")
+    except KeyboardInterrupt:
+        for open_order in oca_orders:
+            exec_ib.cancelOrder(open_order.order)
+            logger.info(
+                f"Canceled {open_order.order.action} order @ {open_order.order.lmtPrice}"
+            )
+        ib.sleep(1)
+        return
     orders = execute_oca_orders(exec_ib, oca_orders)
 
     for oca_order, open_order in orders.items():
@@ -269,6 +335,8 @@ def mass_trade_oca_option(
                     volatility=volatility,
                     aggressive=aggresive,
                     manual_min_tick=manual_min_tick,
+                    min_ask_price=min_ask_price,
+                    max_ask_price=max_bid_price,
                 )
 
             # Wait for 5 seconds before checking again
@@ -276,9 +344,6 @@ def mass_trade_oca_option(
 
     finally:
         # cancel all orders
-        current_contracts = [
-            open_order.contract.conId for open_order in orders.values()
-        ]
         for open_order in orders.values():
 
             exec_ib.cancelOrder(open_order.order)
@@ -301,27 +366,29 @@ if __name__ == "__main__":
     exec_ib = connect_to_ibkr("127.0.0.1", 7496, 333, readonly=False, account=account)
     ib = connect_to_ibkr("127.0.0.1", 7496, 222, readonly=True, account="")
     ib.reqMarketDataType(1)
-    stock = Stock("9988", "", "HKD")
+    stock = Stock("2800", "", "HKD")
     stock = ib.qualifyContracts(stock)[0]
     mass_trade_oca_option(
         ib=ib,
         stock=stock,
         action=Action.SELL,
-        right=Rights.CALL,
-        min_dte=0,
-        max_dte=10,
-        min_strike=Decimal("120"),
-        max_strike=Decimal("140"),
+        right=Rights.PUT,
+        min_dte=20,
+        max_dte=90,
+        min_strike=Decimal("18"),
+        max_strike=Decimal("22"),
         size=Decimal("1"),
-        manual_min_tick=Decimal("0.05"),
-        min_update_size=Decimal("0.05"),
-        min_distance=Decimal("0.5"),
-        oca_group="",  # f"Mass Trade {datetime.now().strftime('%Y%m%d %H:%M:%S')}",
+        manual_min_tick=Decimal("0.01"),
+        min_update_size=Decimal("0.01"),
+        min_distance=Decimal("0.1"),
+        min_ask_price=Decimal("0.5"),
+        max_bid_price=Decimal("999"),
+        oca_group=f"Mass Trade {datetime.now().strftime('%Y%m%d %H:%M:%S')}",
         oca_type=OCAType.REDUCE_WITH_NO_BLOCK,
-        close_positions_only=True,
+        close_positions_only=False,
         depth=5,
         loop_interval=5,
         aggresive=True,
-        volatility=0.5,
+        volatility=0.25,
         exec_ib=exec_ib,
     )

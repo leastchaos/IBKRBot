@@ -13,6 +13,7 @@ def generate_grid(
     add_value_per_level: Decimal,
     min_position_per_level: Decimal,
     position_step: Decimal,
+    multiplier: Decimal,
 ) -> dict[Decimal, Decimal]:
     """Generate an entire grid of prices using Decimal."""
 
@@ -21,7 +22,7 @@ def generate_grid(
         price: Decimal,
     ) -> Decimal:
         return max(
-            (value_per_level / price) // position_step * position_step,
+            (value_per_level / (price * multiplier) ) // position_step * position_step,
             min_position_per_level,
         )
 
@@ -132,6 +133,7 @@ if __name__ == "__main__":
         add_value_per_level=Decimal("0"),
         position_step=Decimal("1"),
         min_position_per_level=Decimal("1"),
+        multiplier=Decimal("1"),
     )
     pprint(grid)
     buy_prices, sell_prices = get_current_grid_buy_and_sell_levels(

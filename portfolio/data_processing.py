@@ -38,10 +38,10 @@ def calculate_current_risk(row) -> float | None:
     if position > 0:
         return market_price * position * multiplier * forex_rate
     if sec_type == "OPT" and right == "P" and position < 0:
-        current_risk = -position * strike * multiplier + position * market_price
+        current_risk = -position * strike * multiplier + position * market_price * multiplier
         return current_risk * forex_rate
     if sec_type == "OPT" and right == "C" and position < 0:
-        return position * market_price * forex_rate
+        return position * market_price * forex_rate * multiplier
     return None
 
 
