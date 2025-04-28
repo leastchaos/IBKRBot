@@ -124,35 +124,28 @@ if __name__ == "__main__":
     from logger_config import setup_logger
     from pprint import pprint
 
-    ib = connect_to_ibkr("127.0.0.1", 7497, 222, readonly=True, account="")
-    stock_name = "BABA"
-    exchange = "SMART"
-    currency = "USD"
+    ib = connect_to_ibkr("127.0.0.1", 7496, 222, readonly=True, account="")
+    stock_name = "2800"
+    exchange = ""
+    currency = "HKD"
     strike = 0
     expiry = "20250718"
     right = "C"
-    min_price = Decimal("0.5")
-    max_price = Decimal("180.0")
-    min_position_per_level = Decimal("5")
+    min_price = Decimal("0.4")
+    max_price = Decimal("6.0")
+    min_position_per_level = Decimal("1")
     position_step = Decimal("1")
-    fee_per_trade = Decimal("3")
+    fee_per_trade = Decimal("28")
     slippage_per_trade = Decimal("0.01")
     simulation_days = "1 Y"
     bar_size = "1 min"
-    step_range = [1, 2]
-    percent_range = [1, 2, 3, 4, 5]
+    step_range = [0.2]
+    percent_range = [50, 100]
     max_value_range = [
         Decimal("1000"),
-        Decimal("2000"),
-        Decimal("4000"),
-        Decimal("5000"),
-        Decimal("10000"),
     ]
     add_value_range = [
-        Decimal("-100"),
-        Decimal("-200"),
-        Decimal("-500"),
-        Decimal("-1000"),
+        Decimal("0"),
     ]
 
     # Select either stock or option

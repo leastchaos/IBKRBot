@@ -52,6 +52,8 @@ def wait_for_next_update(wait_time: int) -> None:
 
 
 def main(
+    host="127.0.0.1",
+    port=7496,
     workbook_name="Portfolio Tracking",
     position_sheet="IBKRPositions",
     balance_sheet="IBKRBalances",
@@ -59,10 +61,13 @@ def main(
 ) -> None:
     setup_logger()
     ib = IB()
-    ib.connect("127.0.0.1", 7496, clientId=10)
+    ib.connect(host, port, clientId=random.randint(2,1000))
 
     try:
         while True:
+            # check if ib is connected
+            if not ib.isConnected():
+                ib.connect(host, port, clientId=random.randint(2,1000))
             update_data(
                 ib,
                 workbook_name,

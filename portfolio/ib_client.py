@@ -198,7 +198,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "Strike": getattr(contract, "strike", None),
                 "Right": getattr(contract, "right", None),
                 "Multiplier": float(multiplier),
-                "MarketPrice": ticker.close or ticker.last,
+                "MarketPrice": ticker.marketPrice() or ticker_backup.marketPrice(),
                 "Delta": delta,
                 "Gamma": gamma,
                 "Theta": theta,
@@ -213,7 +213,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
     }
     df["ForexRate"] = df["Currency"].map(forex_rates)
     print(df.head())
-    df["MarketPrice"] = df["MarketPrice"].fillna(df["AvgCost"])
+    df["MarketPrice"] = df["MarketPrice"].fillna(df["AvgCost"]/df["Multiplier"])
     return df
 
 

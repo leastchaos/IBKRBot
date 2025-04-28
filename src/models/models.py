@@ -18,6 +18,7 @@ class OCAType(Enum):
     CANCEL_ALL_WITH_BLOCK = 1
     REDUCE_WITH_BLOCK = 2
     REDUCE_WITH_NO_BLOCK = 3
+    MANUAL = 0
 
 
 @dataclass(frozen=True)

@@ -19,17 +19,23 @@ def determine_price(
     ib: IB,
     stock_ticker: Ticker,
     option_ticker: Ticker,
-    action: Action,
+    action: Action | str,
     min_distance: Decimal,
     depth: int,
     aggressive: bool,
     volatility: float,
+    manual_min_tick: Decimal | None = None,
     order: Trade | None = None,
     timeout: int = 5,
 ) -> Decimal:
     """Determine the price to place the order."""
     tick_size = Decimal(str(option_ticker.minTick))
+    if manual_min_tick:
+        tick_size = manual_min_tick
     own_quantity = 0
+    # convert str to Action if action is a string
+    if isinstance(action, str):
+        action = Action(action)
     if depth > 0:
         if order:
             own_quantity = order.order.totalQuantity - order.filled()
@@ -43,7 +49,7 @@ def determine_price(
             ).optPrice
         )
     )
-    if action == Action.BUY or action == Action.BUY.value:
+    if action == Action.BUY:
         max_price = Decimal(str(option_ticker.ask)) - min_distance
         logger.info(
             f"Calculated price: {calculated_price}, max_price: {max_price}, "
@@ -52,7 +58,7 @@ def determine_price(
         price = min(depth_bid, max_price, calculated_price)
         logger.info(f"price: {price}")
 
-    if action == Action.SELL or action == Action.SELL.value:
+    if action == Action.SELL:
         min_price = Decimal(str(option_ticker.bid)) + min_distance
         logger.info(
             f"Calculated price: {calculated_price}, min_price: {min_price}, "
@@ -64,12 +70,12 @@ def determine_price(
         price = max(depth_ask, min_price, calculated_price)
         logger.info(f" price: {price}")
 
-    rounded_price = round_to_tick(price, tick_size)
-    if rounded_price < Decimal("0"):
+    if price < Decimal("0"):
         return Decimal("-1")
     if aggressive:
-        rounded_price += tick_size if action == Action.BUY else -tick_size
-        logger.info(f"Rounded price: {rounded_price}")
+        price += tick_size if action == Action.BUY else -tick_size
+    rounded_price = round_to_tick(price, tick_size)
+    logger.info(f"rounded_price: {rounded_price} tick_size: {tick_size} price: {price}")
     return rounded_price
 
 
@@ -107,6 +113,7 @@ def manage_open_order(
     min_update_size: Decimal,
     volatility: float,
     aggressive: bool,
+    manual_min_tick: Decimal | None,
 ) -> None:
     """Manage the open order."""
     price = determine_price(
@@ -119,6 +126,7 @@ def manage_open_order(
         order=order,
         volatility=volatility,
         aggressive=aggressive,
+        manual_min_tick=manual_min_tick,
     )
     lmt_price = Decimal(str(order.order.lmtPrice))
     if price <= Decimal("0"):
@@ -153,6 +161,7 @@ def mass_trade_oca_option(
     loop_interval: int,
     volatility: float,
     aggresive: bool,
+    manual_min_tick: Decimal | None,
     exec_ib: IB | None = None,  # in order to use data from account with subscriptions
 ) -> None:
     """Mass trade option contracts."""
@@ -170,26 +179,6 @@ def mass_trade_oca_option(
     for option in options:
         option_size = size
         option_ticker = options_tickers[option.conId]
-        wait_for_subscription(ib, option_ticker, 1)
-        price = determine_price(
-            ib=ib,
-            stock_ticker=stock_ticker,
-            option_ticker=option_ticker,
-            action=action,
-            min_distance=min_distance,
-            depth=depth,
-            volatility=volatility,
-            aggressive=aggresive,
-        )
-        if price < Decimal("0"):
-            price = (
-                Decimal(str(option_ticker.contract.strike))
-                if action == Action.SELL
-                else option_ticker.minTick
-            )
-            logger.warning(
-                f"Unable to determine price for {option_display(option)}. Using strike price or min tick."
-            )
 
         if close_positions_only:
             current_pos = get_current_position(exec_ib, option_ticker.contract)
@@ -208,7 +197,27 @@ def mass_trade_oca_option(
                     )
                     continue
                 option_size = min(option_size, -current_pos)
-
+        wait_for_subscription(ib, option_ticker, 1)
+        price = determine_price(
+            ib=ib,
+            stock_ticker=stock_ticker,
+            option_ticker=option_ticker,
+            action=action,
+            min_distance=min_distance,
+            depth=depth,
+            volatility=volatility,
+            aggressive=aggresive,
+            manual_min_tick=manual_min_tick,
+        )
+        if price < Decimal("0"):
+            price = (
+                Decimal(str(option_ticker.contract.strike))
+                if action == Action.SELL
+                else option_ticker.minTick
+            )
+            logger.warning(
+                f"Unable to determine price for {option_display(option)}. Using strike price or min tick."
+            )
         order = LimitOrder(
             action=action.value,
             totalQuantity=float(option_size),
@@ -218,41 +227,66 @@ def mass_trade_oca_option(
             ocaType=oca_type.value,
             tif="Day",
             account=exec_ib.account,  # custom attribute
+            transmit=False,
         )
-        oca_order = OCAOrder(contract=option, order=order)
+        order = exec_ib.placeOrder(option, order)
+        order.order.transmit = True
+        oca_order = OCAOrder(contract=option, order=order.order)
         logger.info(
-            f"Placing {oca_order.order.action} order: {oca_order.order.totalQuantity} @ {oca_order.order.lmtPrice}"
+            f"Placing {action.value} order: {oca_order.order.totalQuantity} @ {oca_order.order.lmtPrice}"
         )
         oca_orders.append(oca_order)
-
+    input("Check orders and press enter to continue...")
     orders = execute_oca_orders(exec_ib, oca_orders)
+
     for oca_order, open_order in orders.items():
         logger.info(
             f"Placed {oca_order.order.action} order: {oca_order.order.totalQuantity} @ {oca_order.order.lmtPrice}"
         )
     # Manage open_order
+    try:
+        while True:
+            for open_order in orders.values():
+                if open_order.isDone():
+                    logger.info(f"Order {open_order.order.action} is done")
+                    for order in orders.values():
+                        exec_ib.cancelOrder(order.order)
+                        logger.info(
+                            f"Canceled {order.order.action} order @ {order.order.lmtPrice}"
+                        )
+                    logger.info("All orders canceled.")
+                    return
+                ticker = options_tickers[open_order.contract.conId]
+                manage_open_order(
+                    ib=ib,
+                    exec_ib=exec_ib,
+                    order=open_order,
+                    stock_ticker=stock_ticker,
+                    option_ticker=ticker,
+                    min_distance=min_distance,
+                    depth=depth,
+                    min_update_size=min_update_size,
+                    volatility=volatility,
+                    aggressive=aggresive,
+                    manual_min_tick=manual_min_tick,
+                )
 
-    while True:
+            # Wait for 5 seconds before checking again
+            ib.sleep(loop_interval)
+
+    finally:
+        # cancel all orders
+        current_contracts = [
+            open_order.contract.conId for open_order in orders.values()
+        ]
         for open_order in orders.values():
-            if open_order.isDone():
-                logger.info(f"Order {open_order.order.action} is done")
-                return
-            ticker = options_tickers[open_order.contract.conId]
-            manage_open_order(
-                ib=ib,
-                exec_ib=exec_ib,
-                order=open_order,
-                stock_ticker=stock_ticker,
-                option_ticker=ticker,
-                min_distance=min_distance,
-                depth=depth,
-                min_update_size=min_update_size,
-                volatility=volatility,
-                aggressive=aggresive,
+
+            exec_ib.cancelOrder(open_order.order)
+            logger.info(
+                f"Canceled {open_order.order.action} order @ {open_order.order.lmtPrice}"
             )
 
-        # Wait for 5 seconds before checking again
-        ib.sleep(loop_interval)
+        logger.info("All orders canceled.")
 
 
 if __name__ == "__main__":
@@ -263,8 +297,8 @@ if __name__ == "__main__":
 
     setup_logger()
     account = get_ibkr_account("mass_buy_options")
-    exec_ib = connect_to_ibkr("127.0.0.1", 7497, 222, readonly=True, account="")
-    # exec_ib = connect_to_ibkr("127.0.0.1", 7496, 333, readonly=False, account=account)
+    # exec_ib = connect_to_ibkr("127.0.0.1", 7497, 222, readonly=True, account="")
+    exec_ib = connect_to_ibkr("127.0.0.1", 7496, 333, readonly=False, account=account)
     ib = connect_to_ibkr("127.0.0.1", 7496, 222, readonly=True, account="")
     ib.reqMarketDataType(1)
     stock = Stock("9988", "", "HKD")
@@ -273,20 +307,21 @@ if __name__ == "__main__":
         ib=ib,
         stock=stock,
         action=Action.SELL,
-        right=Rights.PUT,
-        min_dte=100,
-        max_dte=365,
-        min_strike=Decimal("140"),
-        max_strike=Decimal("160"),
+        right=Rights.CALL,
+        min_dte=0,
+        max_dte=10,
+        min_strike=Decimal("120"),
+        max_strike=Decimal("140"),
         size=Decimal("1"),
+        manual_min_tick=Decimal("0.05"),
+        min_update_size=Decimal("0.05"),
         min_distance=Decimal("0.5"),
-        oca_group=f"Mass Trade {datetime.now().strftime('%Y%m%d %H:%M:%S')}",
+        oca_group="",  # f"Mass Trade {datetime.now().strftime('%Y%m%d %H:%M:%S')}",
         oca_type=OCAType.REDUCE_WITH_NO_BLOCK,
-        close_positions_only=False,
+        close_positions_only=True,
         depth=5,
         loop_interval=5,
         aggresive=True,
-        volatility=0.45,
-        min_update_size=Decimal("0.01"),
+        volatility=0.5,
         exec_ib=exec_ib,
     )
