@@ -54,31 +54,31 @@ def determine_price(
     )
     if action == Action.BUY:
         max_price = Decimal(str(option_ticker.ask)) - min_distance
-        logger.info(
+        logger.debug(
             f"Calculated price: {calculated_price}, max_price: {max_price}, "
             f"depth_bid: {depth_bid}"
         )
         price = min(depth_bid, max_price, calculated_price, max_bid_price)
-        logger.info(f"price: {price}")
+        logger.debug(f"price: {price}")
 
     if action == Action.SELL:
         min_price = Decimal(str(option_ticker.bid)) + min_distance
-        logger.info(
+        logger.debug(
             f"Calculated price: {calculated_price}, min_price: {min_price}, "
             f"depth_ask: {depth_ask}"
         )
         if depth_ask < Decimal("0"):
-            logger.info("No depth found")
+            logger.debug("No depth found")
             return Decimal("-1")
         price = max(depth_ask, min_price, calculated_price, min_ask_price)
-        logger.info(f" price: {price}")
+        logger.debug(f"price: {price}")
 
     if price < Decimal("0"):
         return Decimal("-1")
     if aggressive:
         price += tick_size if action == Action.BUY else -tick_size
     rounded_price = round_to_tick(price, tick_size)
-    logger.info(f"rounded_price: {rounded_price} tick_size: {tick_size} price: {price}")
+    logger.debug(f"rounded_price: {rounded_price} tick_size: {tick_size} price: {price}")
     return rounded_price
 
 
@@ -141,12 +141,34 @@ def manage_open_order(
             f"Order {option_display(order.contract)} has no limit price. Skipping update."
         )
         return
+    if price == lmt_price:
+        return
+    if not aggressive and (price - lmt_price).copy_abs() < min_update_size:
+        return
     if (lmt_price - price).copy_abs() >= min_update_size:
         logger.info(
             f"Updating {option_display(order.contract)} price from {order.order.lmtPrice} to {price}"
         )
         order.order.lmtPrice = price
         exec_ib.placeOrder(order.contract, order.order)
+        return
+    # if aggressive only shift when order is not in best bid when difference is less than min_update_size
+    if order.order.action == Action.BUY.value and lmt_price - price > Decimal("0"):
+        logger.info(
+            f"Not updating {option_display(order.contract)} price from {order.order.lmtPrice} to {price} (aggressive)"
+        )
+        return
+    if order.order.action == Action.SELL.value and price - lmt_price > Decimal("0"):
+        logger.info(
+            f"Not updating {option_display(order.contract)} price from {order.order.lmtPrice} to {price} (aggressive)"
+        )
+        return
+
+    logger.info(
+        f"Updating {option_display(order.contract)} price from {order.order.lmtPrice} to {price} (aggressive)"
+    )
+    order.order.lmtPrice = price
+    exec_ib.placeOrder(order.contract, order.order)
 
 
 def check_if_price_too_far(
@@ -154,18 +176,22 @@ def check_if_price_too_far(
     option_ticker: Ticker,
     min_ask_price: Decimal,
     max_bid_price: Decimal,
+    volatility: Decimal,
+    stock_price: Decimal,
 ) -> bool:
     if action == Action.BUY:
         bid_price = Decimal(
             str(
                 (
                     option_ticker.bid
-                    if not isnan(option_ticker.bid)
-                    else option_ticker.minTick
+                    if not isnan(option_ticker.bid) and option_ticker.bid > Decimal("0")
+                    else ib.calculateOptionPrice(
+                        option_ticker.contract, float(volatility), float(stock_price)
+                    ).optPrice
                 )
             )
         )
-        if bid_price > Decimal("1.2") * max_bid_price:
+        if bid_price > Decimal("1.05") * max_bid_price:
             logger.info(
                 f"Current bid price {bid_price} too far above max_buy_price {max_bid_price}"
             )
@@ -174,11 +200,13 @@ def check_if_price_too_far(
         ask_price = Decimal(
             str(
                 option_ticker.ask
-                if not isnan(option_ticker.ask)
-                else option_ticker.contract.strike
+                if not isnan(option_ticker.ask) and option_ticker.ask > Decimal("0")
+                else ib.calculateOptionPrice(
+                    option_ticker.contract, float(volatility), float(stock_price)
+                ).optPrice
             )
         )
-        if ask_price < Decimal("0.8") * min_ask_price:
+        if ask_price < Decimal("0.95") * min_ask_price:
             logger.info(
                 f"Current ask price {ask_price} too far below min_sell_price {min_ask_price}"
             )
@@ -257,13 +285,7 @@ def mass_trade_oca_option(
             min_ask_price=min_ask_price,
             max_bid_price=max_bid_price,
         )
-        if check_if_price_too_far(
-            action=action,
-            option_ticker=option_ticker,
-            min_ask_price=min_ask_price,
-            max_bid_price=max_bid_price,
-        ):
-            continue
+
         if price < Decimal("0"):
             price = (
                 Decimal(str(option_ticker.contract.strike))
@@ -274,7 +296,15 @@ def mass_trade_oca_option(
                 f"Unable to determine price for {option_display(option)}. Using strike price or min tick."
             )
         # skip if current bid price is too far above max_buy_price to be triggered
-
+        if check_if_price_too_far(
+            action=action,
+            option_ticker=option_ticker,
+            min_ask_price=min_ask_price,
+            max_bid_price=max_bid_price,
+            volatility=volatility,
+            stock_price=stock_ticker.marketPrice(),
+        ):
+            continue
         order = LimitOrder(
             action=action.value,
             totalQuantity=float(option_size),
@@ -303,6 +333,7 @@ def mass_trade_oca_option(
             )
         ib.sleep(1)
         return
+
     orders = execute_oca_orders(exec_ib, oca_orders)
 
     for oca_order, open_order in orders.items():
@@ -366,29 +397,29 @@ if __name__ == "__main__":
     exec_ib = connect_to_ibkr("127.0.0.1", 7496, 333, readonly=False, account=account)
     ib = connect_to_ibkr("127.0.0.1", 7496, 222, readonly=True, account="")
     ib.reqMarketDataType(1)
-    stock = Stock("2800", "", "HKD")
+    stock = Stock("BABA", "SMART", "USD")
     stock = ib.qualifyContracts(stock)[0]
     mass_trade_oca_option(
         ib=ib,
         stock=stock,
         action=Action.SELL,
         right=Rights.PUT,
-        min_dte=20,
-        max_dte=90,
-        min_strike=Decimal("18"),
-        max_strike=Decimal("22"),
+        min_dte=80,
+        max_dte=400,
+        min_strike=Decimal("120"),
+        max_strike=Decimal("160"),
         size=Decimal("1"),
         manual_min_tick=Decimal("0.01"),
-        min_update_size=Decimal("0.01"),
-        min_distance=Decimal("0.1"),
-        min_ask_price=Decimal("0.5"),
+        min_update_size=Decimal("0.05"),
+        min_distance=Decimal("0.5"),
+        min_ask_price=Decimal("10"),
         max_bid_price=Decimal("999"),
         oca_group=f"Mass Trade {datetime.now().strftime('%Y%m%d %H:%M:%S')}",
-        oca_type=OCAType.REDUCE_WITH_NO_BLOCK,
+        oca_type=OCAType.CANCEL_ALL_WITH_BLOCK,
         close_positions_only=False,
         depth=5,
         loop_interval=5,
         aggresive=True,
-        volatility=0.25,
+        volatility=0.7,
         exec_ib=exec_ib,
     )
