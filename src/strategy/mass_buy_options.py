@@ -178,7 +178,10 @@ def check_if_price_too_far(
     max_bid_price: Decimal,
     volatility: Decimal,
     stock_price: Decimal,
+    skip_too_far_away: bool,
 ) -> bool:
+    if not skip_too_far_away:
+        return False
     if action == Action.BUY:
         bid_price = Decimal(
             str(
@@ -233,6 +236,7 @@ def mass_trade_oca_option(
     loop_interval: int,
     volatility: float,
     aggresive: bool,
+    skip_too_far_away: bool,
     min_ask_price: Decimal,
     max_bid_price: Decimal,
     manual_min_tick: Decimal | None,
@@ -303,6 +307,7 @@ def mass_trade_oca_option(
             max_bid_price=max_bid_price,
             volatility=volatility,
             stock_price=stock_ticker.marketPrice(),
+            skip_too_far_away=skip_too_far_away,
         ):
             continue
         order = LimitOrder(
@@ -402,24 +407,26 @@ if __name__ == "__main__":
     mass_trade_oca_option(
         ib=ib,
         stock=stock,
-        action=Action.SELL,
+        action=Action.BUY,
         right=Rights.PUT,
         min_dte=80,
         max_dte=400,
-        min_strike=Decimal("120"),
-        max_strike=Decimal("160"),
-        size=Decimal("1"),
+        min_strike=Decimal("70"),
+        max_strike=Decimal("100"),
+        size=Decimal("10"),
         manual_min_tick=Decimal("0.01"),
         min_update_size=Decimal("0.05"),
         min_distance=Decimal("0.5"),
         min_ask_price=Decimal("10"),
-        max_bid_price=Decimal("999"),
+        max_bid_price=Decimal("0.1"),
         oca_group=f"Mass Trade {datetime.now().strftime('%Y%m%d %H:%M:%S')}",
-        oca_type=OCAType.CANCEL_ALL_WITH_BLOCK,
+        oca_type=OCAType.MANUAL,
         close_positions_only=False,
         depth=5,
         loop_interval=5,
         aggresive=True,
+        skip_too_far_away=False,
         volatility=0.7,
         exec_ib=exec_ib,
+
     )
