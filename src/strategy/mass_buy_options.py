@@ -245,6 +245,8 @@ def mass_trade_oca_option(
     """Mass trade option contracts."""
     if exec_ib is None:
         exec_ib = ib
+    if oca_type == OCAType.MANUAL:
+        oca_group = ""
     options = get_options(ib, stock, [right], min_dte, max_dte, min_strike, max_strike)
     oca_orders: list[OCAOrder] = []
     stock_ticker = get_stock_ticker(ib, stock.symbol, stock.exchange, stock.currency)
