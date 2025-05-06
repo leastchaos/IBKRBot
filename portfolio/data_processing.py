@@ -13,13 +13,14 @@ def calculate_initial_risk(row: pd.Series) -> float | None:
     multiplier = float(row["Multiplier"]) if row["Multiplier"] else 1
     strike = row["Strike"]
     right = row["Right"]
+    underlying = row["UnderlyingSymbol"]
 
-    # # long puts are considered as puts that protects against long stocks downside
-    # if sec_type == "OPT" and right == "P" and position > 0:
-    #     return (
-    #         -position * strike * multiplier * forex_rate
-    #         + position * avg_cost * forex_rate
-    #     )
+    # long puts are considered as puts that protects against long stocks downside
+    if sec_type == "OPT" and right == "P" and position > 0 and not underlying == "TSLA":
+        return (
+            -position * strike * multiplier * forex_rate
+            + position * avg_cost * forex_rate
+        )
     if position > 0:
         return avg_cost * position * forex_rate
     if sec_type == "OPT" and right == "P" and position < 0:
@@ -41,13 +42,14 @@ def calculate_current_risk(row) -> float | None:
     multiplier = float(row["Multiplier"]) if row["Multiplier"] else 1
     strike = row["Strike"]
     right = row["Right"]
+    underlying = row["UnderlyingSymbol"]
 
     # long puts are considered as puts that protects against long stocks downside
-    # if sec_type == "OPT" and right == "P" and position > 0:
-    #     return (
-    #         -position * strike * multiplier * forex_rate
-    #         + position * market_price * forex_rate
-    #     )
+    if sec_type == "OPT" and right == "P" and position > 0 and not underlying == "TSLA":
+        return (
+            -position * strike * multiplier * forex_rate
+            + position * market_price * forex_rate
+        )
     if position > 0:
         return market_price * position * multiplier * forex_rate
     if sec_type == "OPT" and right == "P" and position < 0:

@@ -54,7 +54,7 @@ def determine_price(
     )
     if action == Action.BUY:
         max_price = Decimal(str(option_ticker.ask)) - min_distance
-        logger.debug(
+        logger.info(
             f"Calculated price: {calculated_price}, max_price: {max_price}, "
             f"depth_bid: {depth_bid}"
         )
@@ -63,7 +63,7 @@ def determine_price(
 
     if action == Action.SELL:
         min_price = Decimal(str(option_ticker.bid)) + min_distance
-        logger.debug(
+        logger.info(
             f"Calculated price: {calculated_price}, min_price: {min_price}, "
             f"depth_ask: {depth_ask}"
         )
@@ -404,31 +404,31 @@ if __name__ == "__main__":
     exec_ib = connect_to_ibkr("127.0.0.1", 7496, 333, readonly=False, account=account)
     ib = connect_to_ibkr("127.0.0.1", 7496, 222, readonly=True, account="")
     ib.reqMarketDataType(1)
-    stock = Stock("BABA", "SMART", "USD")
+    stock = Stock("9988", "", "HKD")
     stock = ib.qualifyContracts(stock)[0]
     mass_trade_oca_option(
         ib=ib,
         stock=stock,
-        action=Action.BUY,
+        action=Action.SELL,
         right=Rights.PUT,
-        min_dte=80,
+        min_dte=200,
         max_dte=400,
-        min_strike=Decimal("70"),
-        max_strike=Decimal("100"),
-        size=Decimal("10"),
+        min_strike=Decimal("160"),
+        max_strike=Decimal("200"),
+        size=Decimal("1"),
         manual_min_tick=Decimal("0.01"),
         min_update_size=Decimal("0.05"),
-        min_distance=Decimal("0.5"),
-        min_ask_price=Decimal("10"),
-        max_bid_price=Decimal("0.1"),
+        min_distance=Decimal("0.1"),
+        min_ask_price=Decimal("40"),
+        max_bid_price=Decimal("5"),
         oca_group=f"Mass Trade {datetime.now().strftime('%Y%m%d %H:%M:%S')}",
-        oca_type=OCAType.MANUAL,
+        oca_type=OCAType.REDUCE_WITH_NO_BLOCK,
         close_positions_only=False,
         depth=5,
         loop_interval=5,
         aggresive=True,
         skip_too_far_away=False,
-        volatility=0.7,
+        volatility=0.5,
         exec_ib=exec_ib,
 
     )
