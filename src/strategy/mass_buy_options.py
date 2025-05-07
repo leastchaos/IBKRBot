@@ -428,7 +428,7 @@ if __name__ == "__main__":
         loop_interval=5,
         aggresive=True,
         skip_too_far_away=False,
-        volatility=0.5,
+        volatility=0.45,
         exec_ib=exec_ib,
 
     )
