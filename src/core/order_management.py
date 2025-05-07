@@ -116,3 +116,28 @@ def create_oca_order(
 
 def round_to_tick(price: Decimal, tick_size: Decimal) -> Decimal:
     return round(price / tick_size) * tick_size
+
+
+# === ASYNC FUNCTIONS ===
+
+async def async_fetch_existing_orders(
+    ib: IB, contract: Contract
+) -> tuple[dict[Decimal, Trade], dict[Decimal, Trade]]:
+    """Fetch existing open orders and categorize them into buy/sell orders."""
+    buy_orders, sell_orders = {}, {}
+    for order in await ib.reqAllOpenOrdersAsync():
+        if order.contract.conId == contract.conId:
+            price = Decimal(str(order.order.lmtPrice))
+            (buy_orders if order.order.action == "BUY" else sell_orders)[price] = order
+    return buy_orders, sell_orders
+
+
+async def async_cancel_all_orders(ib: IB, contract: Contract) -> None:
+    for order in await ib.reqAllOpenOrdersAsync():
+        if order.contract.conId == contract.conId:
+            ib.cancelOrder(order.order)
+            logger.info(f"Canceled {order.order.action} order @ {order.order.lmtPrice}")
+
+    logger.info(f"All orders in {contract.symbol} canceled.")
+
+
