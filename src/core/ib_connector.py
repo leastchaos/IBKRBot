@@ -180,12 +180,12 @@ def get_options(
     logger.info(f"Generated {len(options)} raw options")
 
     # Step 4: Qualify contracts
-    try:
-        qualified_options = ib.qualifyContracts(*options)
-    except Exception as e:
-        logger.error(f"Failed to qualify contracts: {e}")
-        return []
-
+    # try:
+    #     qualified_options = ib.qualifyContracts(*options)
+    # except Exception as e:
+    #     logger.error(f"Failed to qualify contracts: {e}")
+    #     return []
+    qualified_options = ib.qualifyContracts(*options)
     logger.info(f"Qualified {len(qualified_options)} options")
     return qualified_options
 
@@ -327,12 +327,12 @@ async def async_get_options(
     )
     logger.info(f"Generated {len(options)} raw options")
 
-    try:
-        qualified_options = await ib.qualifyContractsAsync(*options)
-    except Exception as e:
-        logger.error(f"Failed to qualify contracts: {e}")
-        return []
-
+    # try:
+        # qualified_options = await ib.qualifyContractsAsync(*options)
+    # except Exception as e:
+    #     logger.error(f"Failed to qualify contracts: {e}")
+    #     return []
+    qualified_options = await ib.qualifyContractsAsync(*options)
     logger.info(f"Qualified {len(qualified_options)} options")
     return qualified_options
 
@@ -356,7 +356,6 @@ if __name__ == "__main__":
         "USD",
     )
     ib.reqMarketDataType(1)
-    print(stock.last)
 
     # print(option_chain)
     # print(get_current_position(ib, stock))

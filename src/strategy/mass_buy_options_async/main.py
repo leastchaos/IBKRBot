@@ -40,21 +40,24 @@ if __name__ == "__main__":
 
     async def main():
         ib = await async_connect_to_ibkr(
-            "127.0.0.1", 7496, 222, readonly=True, account=""
+            "127.0.0.1", 7496, 444, readonly=True, account=""
         )
+        
+        ib.reqMarketDataType(4)
+        await asyncio.sleep(1)
         exec_ib = await async_connect_to_ibkr(
             "127.0.0.1",
             7496,
             333,
-            readonly=True,
+            readonly=False,
             account=get_ibkr_account("mass_buy_options"),
         )
 
         # Qualify stock contract
         stock = Stock(
-            symbol="BABA",
-            exchange="SMART",
-            currency="USD",
+            symbol="9988",
+            exchange="",
+            currency="HKD",
         )
         # Run strategy
         await mass_trade_oca_option(ib, exec_ib, stock, TRADE_CONFIG)

@@ -87,7 +87,7 @@ def execute_oca_orders(
 ) -> dict[OCAOrder, Trade]:
     trades = {}
     for oca_order in oca_orders:
-        trade = ib.placeOrder(oca_order.contract, oca_order.trade)
+        trade = ib.placeOrder(oca_order.contract, oca_order.trade.order)
         trades[oca_order] = trade
     return trades
 

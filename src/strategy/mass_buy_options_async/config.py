@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 
 from src.models.models import Action, Rights, OCAType
-
+from functools import cached_property
 @dataclass
 class TradingConfig:
     # Strategy Parameters
@@ -29,6 +29,7 @@ class TradingConfig:
     oca_type: OCAType = OCAType.REDUCE_WITH_NO_BLOCK
 
     # Default OCA group name
+    @cached_property
     @property
     def oca_group(self):
         from datetime import datetime

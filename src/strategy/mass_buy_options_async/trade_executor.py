@@ -113,10 +113,18 @@ async def _monitor_order(
 ):
     option_ticker = get_option_ticker_from_contract(ib, order.contract, OPTION_TIMEOUT)
     while True:
-        if order.isDone():
-            return
-        await manage_open_order(ib, exec_ib, order, stock_ticker, option_ticker, config)
-        await asyncio.sleep(config.loop_interval)
+        try:
+            if order.isDone():
+                return
+            await manage_open_order(ib, exec_ib, order, stock_ticker, option_ticker, config)
+            await asyncio.sleep(config.loop_interval)
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt detected. Canceling orders...")
+            ib.cancelOrder(order)
+            raise KeyboardInterrupt
+        # except Exception as e:
+        #     logger.exception(f"An error occurred: {e}")
+        #     await asyncio.sleep(config.loop_interval)
 
 
 async def process_option(
@@ -126,22 +134,30 @@ async def process_option(
     config: TradingConfig,
     option: Contract,
 ) -> OCAOrder | None:
-    option_ticker = await async_get_option_ticker_from_contract(
-        ib, option, OPTION_TIMEOUT
-    )
-    if _should_skip_option(exec_ib, option, config):
-        return None
+    try:
+        option_ticker = await async_get_option_ticker_from_contract(
+            ib, option, OPTION_TIMEOUT
+        )
+        if _should_skip_option(exec_ib, option, config):
+            return None
 
-    price = await _calculate_price(ib, stock_ticker, option_ticker, config, None)
-    if await check_if_price_too_far(
-        ib, option_ticker, config, stock_ticker.marketPrice()
-    ):
-        return None
+        price = await _calculate_price(ib, stock_ticker, option_ticker, config, None)
+        if await check_if_price_too_far(
+            ib, option_ticker, config, stock_ticker.marketPrice()
+        ):
+            return None
 
-    order = _create_limit_order(exec_ib.account, price, config)
-    trade = _place_and_transmit_order(exec_ib, option, order)
+        order = _create_limit_order(exec_ib.account, price, config)
+        trade = _place_and_transmit_order(exec_ib, option, order)
 
-    return OCAOrder(option, trade)
+        return OCAOrder(option, trade)
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt detected. Canceling orders...")
+        raise KeyboardInterrupt
+    # except Exception as e:
+    #     logger.exception(f"An error occurred: {e}")
+    #     return None
+    
     
 
 
