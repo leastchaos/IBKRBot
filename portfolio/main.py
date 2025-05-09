@@ -67,7 +67,12 @@ def main(
         while True:
             # check if ib is connected
             if not ib.isConnected():
-                ib.connect(host, port, clientId=random.randint(2,1000))
+                try:
+                    ib.connect(host, port, clientId=random.randint(2,1000))
+                except Exception as e:
+                    logger.exception(f"An error occurred: {e}")
+                    wait_for_next_update(300)
+                    continue
             update_data(
                 ib,
                 workbook_name,

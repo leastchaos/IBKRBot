@@ -13,7 +13,7 @@ logger = logging.getLogger()
 async def manage_open_order(
     ib: IB,
     exec_ib: IB,
-    order: Trade,
+    trade: Trade,
     stock_ticker: Ticker,
     option_ticker: Ticker,
     config: TradingConfig,
@@ -24,12 +24,12 @@ async def manage_open_order(
         stock_ticker=stock_ticker,
         option_ticker=option_ticker,
         config=config,
-        order=order,
+        trade=trade,
     )
-    lmt_price = Decimal(str(order.order.lmtPrice))
+    lmt_price = Decimal(str(trade.order.lmtPrice))
     if price <= Decimal("0"):
         logger.warning(
-            f"Order {option_display(order.contract)} has no limit price. Skipping update."
+            f"Order {option_display(trade.contract)} has no limit price. Skipping update."
         )
         return
     if price == lmt_price:
@@ -41,28 +41,28 @@ async def manage_open_order(
         return
     if (lmt_price - price).copy_abs() >= config.min_update_size:
         logger.info(
-            f"Updating {option_display(order.contract)} price from {order.order.lmtPrice} to {price}"
+            f"Updating {option_display(trade.contract)} price from {trade.order.lmtPrice} to {price}"
         )
-        order.order.lmtPrice = price
-        exec_ib.placeOrder(order.contract, order.order)
+        trade.order.lmtPrice = price
+        exec_ib.placeOrder(trade.contract, trade.order)
         return
     # if aggressive only shift when order is not in best bid when difference is less than min_update_size
-    if order.order.action == Action.BUY.value and lmt_price - price > Decimal("0"):
+    if trade.order.action == Action.BUY.value and lmt_price - price > Decimal("0"):
         logger.info(
-            f"Not updating {option_display(order.contract)} price from {order.order.lmtPrice} to {price} (aggressive)"
+            f"Not updating {option_display(trade.contract)} price from {trade.order.lmtPrice} to {price} (aggressive)"
         )
         return
-    if order.order.action == Action.SELL.value and price - lmt_price > Decimal("0"):
+    if trade.order.action == Action.SELL.value and price - lmt_price > Decimal("0"):
         logger.info(
-            f"Not updating {option_display(order.contract)} price from {order.order.lmtPrice} to {price} (aggressive)"
+            f"Not updating {option_display(trade.contract)} price from {trade.order.lmtPrice} to {price} (aggressive)"
         )
         return
 
     logger.info(
-        f"Updating {option_display(order.contract)} price from {order.order.lmtPrice} to {price} (aggressive)"
+        f"Updating {option_display(trade.contract)} price from {trade.order.lmtPrice} to {price} (aggressive)"
     )
-    order.order.lmtPrice = price
-    exec_ib.placeOrder(order.contract, order.order)
+    trade.order.lmtPrice = price
+    exec_ib.placeOrder(trade.contract, trade.order)
 
 
 async def check_if_price_too_far(
@@ -105,4 +105,39 @@ async def check_if_price_too_far(
     return False
 
 
-if __name__
+if __name__ == "__main__":
+    import asyncio
+    from src.utils.logger_config import setup_logger
+
+    setup_logger()
+    from src.strategy.mass_buy_options_async.config import TradingConfig
+    from src.core.ib_connector import (
+        async_connect_to_ibkr,
+        async_get_stock_ticker,
+        async_get_option_ticker,
+    )
+
+    config = TradingConfig.generate_test_config()
+
+    async def main():
+        ib = await async_connect_to_ibkr(
+            "127.0.0.1", 7496, 666, readonly=True, account=""
+        )
+        ib.reqMarketDataType(4)
+        stock_ticker = await async_get_stock_ticker(ib, "TSLA", "SMART", "USD", 10)
+        option_ticker = await async_get_option_ticker(
+            ib,
+            "TSLA",
+            "20250620",
+            Decimal("100"),
+            "C",
+            "SMART",
+            "",
+            "USD",
+            1,
+        )
+        stock_price = Decimal(str(stock_ticker.marketPrice()))
+        print(await check_if_price_too_far(ib, option_ticker, config, stock_price))
+
+
+    asyncio.run(main())

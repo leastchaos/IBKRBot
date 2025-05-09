@@ -102,6 +102,12 @@ def get_depth_price(
         if option_ticker.domAsks:
             depth_ask = get_price_at_depth(option_ticker.domAsks, depth)
         ib.cancelMktDepth(option_ticker.contract, isSmartDepth=True)
+    if isnan(depth_bid):
+        print(f"min tick: {option_ticker.minTick}")
+        depth_bid = Decimal(str(option_ticker.minTick))
+    if isnan(depth_ask):
+        print(f"min tick: {option_ticker.minTick}")
+        depth_ask = Decimal(str(option_ticker.contract.strike))
     return depth_bid, depth_ask
 
 
@@ -325,18 +331,18 @@ def mass_trade_oca_option(
         )
         order = exec_ib.placeOrder(option, order)
         order.order.transmit = True
-        oca_order = OCAOrder(contract=option, order=order.order)
+        oca_order = OCAOrder(contract=option, trade=order.order)
         logger.info(
-            f"Placing {action.value} order: {oca_order.order.totalQuantity} @ {oca_order.order.lmtPrice}"
+            f"Placing {action.value} order: {oca_order.trade.totalQuantity} @ {oca_order.trade.lmtPrice}"
         )
         oca_orders.append(oca_order)
     try:
         input("Check orders and press enter to continue...")
     except KeyboardInterrupt:
         for open_order in oca_orders:
-            exec_ib.cancelOrder(open_order.order)
+            exec_ib.cancelOrder(open_order.trade)
             logger.info(
-                f"Canceled {open_order.order.action} order @ {open_order.order.lmtPrice}"
+                f"Canceled {open_order.trade.action} order @ {open_order.trade.lmtPrice}"
             )
         ib.sleep(1)
         return
@@ -345,7 +351,7 @@ def mass_trade_oca_option(
 
     for oca_order, open_order in orders.items():
         logger.info(
-            f"Placed {oca_order.order.action} order: {oca_order.order.totalQuantity} @ {oca_order.order.lmtPrice}"
+            f"Placed {oca_order.trade.action} order: {oca_order.trade.totalQuantity} @ {oca_order.trade.lmtPrice}"
         )
     # Manage open_order
     try:

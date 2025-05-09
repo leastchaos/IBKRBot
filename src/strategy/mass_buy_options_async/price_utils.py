@@ -46,7 +46,7 @@ async def determine_price(
     stock_ticker: Ticker,
     option_ticker: Ticker,
     config: TradingConfig,
-    order: Trade | None = None,
+    trade: Trade | None = None,
 ) -> Decimal:
     """Determine optimal price for an order based on market data and strategy."""
     """Determine the price to place the order."""
@@ -56,8 +56,8 @@ async def determine_price(
     own_quantity = 0
     action = config.action
     if config.depth > 0:
-        if order:
-            own_quantity = order.order.totalQuantity - order.filled()
+        if trade:
+            own_quantity = trade.order.totalQuantity - trade.filled()
     depth_bid, depth_ask = await get_depth_price(
         ib, option_ticker, config.depth + own_quantity, config.determine_price_timeout
     )

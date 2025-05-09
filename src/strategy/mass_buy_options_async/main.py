@@ -1,12 +1,18 @@
+import asyncio
 from decimal import Decimal
 import logging
+
+from ib_async import Stock
 from src.models.models import Action, OCAType, Rights
 from src.strategy.mass_buy_options_async.config import TradingConfig
 from src.strategy.mass_buy_options_async.trade_executor import mass_trade_oca_option
-from src.core.ib_connector import connect_to_ibkr, get_stock_ticker
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+from src.core.ib_connector import (
+    async_connect_to_ibkr,
+    connect_to_ibkr,
+    get_stock_ticker,
+)
+from src.utils.helpers import get_ibkr_account
+from src.utils.logger_config import setup_logger
 
 # Configuration
 TRADE_CONFIG = TradingConfig(
@@ -23,16 +29,35 @@ TRADE_CONFIG = TradingConfig(
     volatility=0.5,
     aggressive=True,
     skip_too_far_away=False,
-    oca_type=OCAType.REDUCE_WITH_NO_BLOCK
+    oca_type=OCAType.REDUCE_WITH_NO_BLOCK,
+    min_ask_price=Decimal("0"),
+    max_bid_price=Decimal("100"),
 )
 
 if __name__ == "__main__":
     # Connect to IBKR
-    ib = connect_to_ibkr("127.0.0.1", 7496, 222, readonly=True)
-    exec_ib = connect_to_ibkr("127.0.0.1", 7496, 333, readonly=False)
-    
-    # Qualify stock contract
-    stock = get_stock_ticker(ib, "9988", "SEHK", "HKD")
-    
-    # Run strategy
-    mass_trade_oca_option(ib, exec_ib, stock.contract, TRADE_CONFIG)
+    setup_logger()
+
+    async def main():
+        ib = await async_connect_to_ibkr(
+            "127.0.0.1", 7496, 222, readonly=True, account=""
+        )
+        exec_ib = await async_connect_to_ibkr(
+            "127.0.0.1",
+            7496,
+            333,
+            readonly=True,
+            account=get_ibkr_account("mass_buy_options"),
+        )
+
+        # Qualify stock contract
+        stock = Stock(
+            symbol="BABA",
+            exchange="SMART",
+            currency="USD",
+        )
+        # Run strategy
+        await mass_trade_oca_option(ib, exec_ib, stock, TRADE_CONFIG)
+
+
+    asyncio.run(main())
