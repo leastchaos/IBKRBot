@@ -122,7 +122,7 @@ async def _monitor_order(
             await asyncio.sleep(config.loop_interval)
         except (KeyboardInterrupt, asyncio.exceptions.CancelledError):
             logger.info("KeyboardInterrupt detected. Canceling orders...")
-            ib.cancelOrder(order)
+            exec_ib.cancelOrder(order.order)
             raise KeyboardInterrupt
         # except Exception as e:
         #     logger.exception(f"An error occurred: {e}")
@@ -210,16 +210,24 @@ async def mass_trade_oca_option(
             )
         )
     
-    done, pending = await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
+    try:
+        done, pending = await asyncio.wait(
+            active_tasks, return_when=asyncio.FIRST_COMPLETED
+        )
+    finally:
+        logger.info("Stopped or exception occured, ensuring all orders are cancelled...")
+        for trade in active_orders:
+            if trade.isDone():
+                continue
+            logging.info(f"Canceling order: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}")
+            ib.cancelOrder(trade.order)
+        for task in active_tasks:
+            if task.done():
+                continue
+            task.cancel()
 
-    for task in pending:
-        task.cancel()
-
-    for trade in active_orders:
-        ib.cancelOrder(trade)
-
-    logger.info(f"Stopped monitoring orders after first completion")
-
+        await asyncio.gather(*active_tasks)
+    
 
 if __name__ == "__main__":
     from src.core.ib_connector import async_connect_to_ibkr
