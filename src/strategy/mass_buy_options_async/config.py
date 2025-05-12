@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import Enum
-
+from datetime import datetime
 from src.models.models import Action, Rights, OCAType
 from functools import cached_property
 @dataclass
@@ -27,12 +26,15 @@ class TradingConfig:
     loop_interval: int = 5
     close_positions_only: bool = False
     oca_type: OCAType = OCAType.REDUCE_WITH_NO_BLOCK
+    default_stock_price: Decimal | None = None
+    option_timeout: int = 1
+    stock_timeout: int = 5
 
     # Default OCA group name
     @cached_property
-    @property
-    def oca_group(self):
-        from datetime import datetime
+    def oca_group(self) -> str:
+        if self.oca_type == OCAType.MANUAL:
+            return ""
         return f"Mass Trade {datetime.now().strftime('%Y%m%d %H:%M:%S')}"
 
     @classmethod
@@ -54,8 +56,9 @@ class TradingConfig:
             oca_type=OCAType.REDUCE_WITH_NO_BLOCK,
             min_ask_price=Decimal("0"),
             max_bid_price=Decimal("100"),
+            stock_timeout=1,
+            default_stock_price=Decimal("100"),
         )
-
 
 if __name__ == "__main__":
     print(TradingConfig.generate_test_config())

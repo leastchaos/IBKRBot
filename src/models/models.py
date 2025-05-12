@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from ib_async import Contract, LimitOrder, Trade
+from ib_async import Contract, LimitOrder, Order, Trade
 
 
 class Rights(Enum):
@@ -24,4 +24,4 @@ class OCAType(Enum):
 @dataclass(frozen=True)
 class OCAOrder:
     contract: Contract
-    trade: Trade
+    order: Order

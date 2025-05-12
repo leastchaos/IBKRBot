@@ -11,6 +11,7 @@ import asyncio
 logger = logging.getLogger()
 DEPTH_PRICE_SEMAPHORE = asyncio.Semaphore(2)
 
+
 async def get_depth_price(
     ib: IB, option_ticker: Ticker, depth: int, timeout: int
 ) -> tuple[Decimal, Decimal]:
@@ -41,6 +42,16 @@ async def get_depth_price(
         return depth_bid, depth_ask
 
 
+def get_stock_price(stock_ticker: Ticker, config: TradingConfig) -> float:
+    market_price = stock_ticker.marketPrice()
+    if isnan(market_price):
+        logger.warning("Market price is NaN")
+        if config.default_stock_price:
+            logger.warning(f"Using default stock price: {config.default_stock_price}")
+            return config.default_stock_price
+    return market_price
+
+
 async def determine_price(
     ib: IB,
     stock_ticker: Ticker,
@@ -61,12 +72,12 @@ async def determine_price(
     depth_bid, depth_ask = await get_depth_price(
         ib, option_ticker, config.depth + own_quantity, config.determine_price_timeout
     )
-    market_price = stock_ticker.marketPrice()
+    market_price = get_stock_price(stock_ticker, config)
     if isnan(market_price):
-        logger.warning("Market price is NaN")
+        logger.warning("Market price is NaN, returning -1")
         return Decimal("-1")
     option_calculation = await ib.calculateOptionPriceAsync(
-        option_ticker.contract, config.volatility, stock_ticker.marketPrice()
+        option_ticker.contract, config.volatility, market_price
     )
     if not option_calculation:
         logger.warning("Option calculation failed")
@@ -120,8 +131,8 @@ if __name__ == "__main__":
         action=Action.BUY,
         right=Rights.CALL,
         min_dte=200,
-        max_dte=400,
-        min_strike=Decimal("160"),
+        max_dte=300,
+        min_strike=Decimal("190"),
         max_strike=Decimal("200"),
         size=Decimal("1"),
         manual_min_tick=Decimal("0.01"),

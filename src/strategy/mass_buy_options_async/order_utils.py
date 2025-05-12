@@ -4,7 +4,10 @@ from ib_async import Trade, IB, Ticker
 from src.utils.helpers import option_display
 import logging
 from src.strategy.mass_buy_options_async.config import TradingConfig
-from src.strategy.mass_buy_options_async.price_utils import determine_price
+from src.strategy.mass_buy_options_async.price_utils import (
+    determine_price,
+    get_stock_price,
+)
 from src.models.models import Action
 
 logger = logging.getLogger()
@@ -24,7 +27,7 @@ async def manage_open_order(
         stock_ticker=stock_ticker,
         option_ticker=option_ticker,
         config=config,
-        trade=trade,
+        order=trade,
     )
     lmt_price = Decimal(str(trade.order.lmtPrice))
     if price <= Decimal("0"):
@@ -70,6 +73,9 @@ async def check_if_price_too_far(
 ) -> bool:
     """Check if current price deviates too far from calculated value."""
     if not config.skip_too_far_away:
+        return False
+    if isnan(stock_price):
+        logger.warning("Stock price is NaN, skipping check if price is too far away")
         return False
     option_price = await ib.calculateOptionPriceAsync(
         option_ticker.contract, float(config.volatility), float(stock_price)
@@ -136,8 +142,7 @@ if __name__ == "__main__":
             "USD",
             1,
         )
-        stock_price = Decimal(str(stock_ticker.marketPrice()))
+        stock_price = get_stock_price(stock_ticker, config)
         print(await check_if_price_too_far(ib, option_ticker, config, stock_price))
-
 
     asyncio.run(main())

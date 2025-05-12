@@ -1,24 +1,23 @@
 import asyncio
 from decimal import Decimal
-from ib_async import IB, Contract, LimitOrder, Stock, Ticker, Trade
+from ib_async import IB, Contract, LimitOrder, OrderStatus, Stock, Ticker, Trade
 from src.core.ib_connector import (
     async_get_option_ticker_from_contract,
     async_get_options,
     async_get_stock_ticker,
     get_current_position,
-    get_options,
-    get_stock_ticker,
     get_option_ticker_from_contract,
-    wait_for_subscription,
 )
-from src.core.order_management import execute_oca_orders
-from src.models.models import Action, OCAOrder
+from src.models.models import Action
 from src.strategy.mass_buy_options_async.config import TradingConfig
 from src.strategy.mass_buy_options_async.order_utils import (
     check_if_price_too_far,
     manage_open_order,
 )
-from src.strategy.mass_buy_options_async.price_utils import determine_price
+from src.strategy.mass_buy_options_async.price_utils import (
+    determine_price,
+    get_stock_price,
+)
 import logging
 
 logger = logging.getLogger()
@@ -89,36 +88,39 @@ def _create_limit_order(
     )
 
 
-def _place_and_transmit_order(ib: IB, option: Contract, order: LimitOrder) -> Trade:
+def _place_order(ib: IB, option: Contract, order: LimitOrder) -> Trade:
     """Place and transmit order to IB. set transmit to True so that next order will then be transmitted"""
     placed_order = ib.placeOrder(option, order)
-    placed_order.order.transmit = True
     return placed_order
 
 
-def _wait_for_user_confirmation(ib: IB, oca_orders: list[OCAOrder]) -> bool:
+def _wait_for_user_confirmation(ib: IB, oca_trades: list[Trade]) -> bool:
     """Wait for user confirmation to proceed with orders."""
     try:
         input("Review orders and press Enter to continue...")
         return True
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         logger.info("KeyboardInterrupt detected. Canceling orders...")
-        for oca in oca_orders:
-            ib.cancelOrder(oca.trade)
+        for trade in oca_trades:
+            ib.cancelOrder(trade.order)
         return False
 
 
 async def _monitor_order(
     ib: IB, exec_ib: IB, stock_ticker: Ticker, config: TradingConfig, order: Trade
 ):
-    option_ticker = get_option_ticker_from_contract(ib, order.contract, OPTION_TIMEOUT)
+    option_ticker = await async_get_option_ticker_from_contract(
+        ib, order.contract, config.option_timeout
+    )
     while True:
         try:
             if order.isDone():
                 return
-            await manage_open_order(ib, exec_ib, order, stock_ticker, option_ticker, config)
+            await manage_open_order(
+                ib, exec_ib, order, stock_ticker, option_ticker, config
+            )
             await asyncio.sleep(config.loop_interval)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, asyncio.exceptions.CancelledError):
             logger.info("KeyboardInterrupt detected. Canceling orders...")
             ib.cancelOrder(order)
             raise KeyboardInterrupt
@@ -133,8 +135,9 @@ async def process_option(
     stock_ticker: Ticker,
     config: TradingConfig,
     option: Contract,
-) -> OCAOrder | None:
+) -> Trade | None:
     try:
+        trade = None
         option_ticker = await async_get_option_ticker_from_contract(
             ib, option, OPTION_TIMEOUT
         )
@@ -142,23 +145,34 @@ async def process_option(
             return None
 
         price = await _calculate_price(ib, stock_ticker, option_ticker, config, None)
-        if await check_if_price_too_far(
-            ib, option_ticker, config, stock_ticker.marketPrice()
-        ):
+        stock_price = get_stock_price(stock_ticker, config)
+        if await check_if_price_too_far(ib, option_ticker, config, stock_price):
             return None
 
         order = _create_limit_order(exec_ib.account, price, config)
-        trade = _place_and_transmit_order(exec_ib, option, order)
+        trade = _place_order(exec_ib, option, order)
 
-        return OCAOrder(option, trade)
-    except KeyboardInterrupt:
+        return trade
+    except (KeyboardInterrupt, asyncio.exceptions.CancelledError):
         logger.info("KeyboardInterrupt detected. Canceling orders...")
+        if trade is not None:
+            ib.cancelOrder(trade)
+
         raise KeyboardInterrupt
     # except Exception as e:
     #     logger.exception(f"An error occurred: {e}")
     #     return None
-    
-    
+
+
+def transmit_orders(exec_ib: IB, trades: list[Trade]) -> list[Trade]:
+    transmitted_trades = []
+    for trade in trades:
+        if trade.isDone():
+            continue
+        trade.order.transmit = True
+        transmitted_trade = exec_ib.placeOrder(trade.contract, trade.order)
+        transmitted_trades.append(transmitted_trade)
+    return transmitted_trades
 
 
 async def mass_trade_oca_option(
@@ -167,35 +181,44 @@ async def mass_trade_oca_option(
     """Execute mass trading of options with OCA logic."""
     options = await _prepare_options(ib, stock, config)
     stock_ticker = await async_get_stock_ticker(
-        ib, stock.symbol, stock.exchange, stock.currency
+        ib,
+        stock.symbol,
+        stock.exchange,
+        stock.currency,
     )
     tasks = [
-        process_option(ib, exec_ib, stock_ticker, config, option)
-        for option in options
+        process_option(ib, exec_ib, stock_ticker, config, option) for option in options
     ]
-    results = await asyncio.gather(*tasks)
-    oca_orders = [result for result in results if result is not None]
-    if not _wait_for_user_confirmation(ib, oca_orders):
+    try:
+        results = await asyncio.gather(*tasks)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        logger.info("KeyboardInterrupt detected. Ending execution...")
         return
-
-    active_orders = execute_oca_orders(exec_ib, oca_orders)
+    trades = [result for result in results if result is not None]
+    logger.info(f"Found {len(trades)} trades to execute.")
+    if not _wait_for_user_confirmation(ib, trades):
+        return
+    active_orders = transmit_orders(exec_ib, trades)
+    if not active_orders:
+        logger.info("No orders to execute.")
+        return
     active_tasks: list[asyncio.Task] = []
-    for trade in active_orders.values():
+    for trade in active_orders:
         active_tasks.append(
             asyncio.create_task(
                 _monitor_order(ib, exec_ib, stock_ticker, config, trade)
             )
         )
+    
+    done, pending = await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
 
-    await asyncio.gather(*active_tasks)
-
-    for task in active_tasks:
+    for task in pending:
         task.cancel()
 
-    for trade in active_orders.values():
+    for trade in active_orders:
         ib.cancelOrder(trade)
 
-    logger.info(f"All orders in {stock.symbol} executed.")
+    logger.info(f"Stopped monitoring orders after first completion")
 
 
 if __name__ == "__main__":

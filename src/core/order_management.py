@@ -87,7 +87,7 @@ def execute_oca_orders(
 ) -> dict[OCAOrder, Trade]:
     trades = {}
     for oca_order in oca_orders:
-        trade = ib.placeOrder(oca_order.contract, oca_order.trade.order)
+        trade = ib.placeOrder(oca_order.contract, oca_order.order)
         trades[oca_order] = trade
     return trades
 
@@ -102,7 +102,7 @@ def create_oca_order(
 ) -> OCAOrder:
     return OCAOrder(
         contract=contract,
-        trade=LimitOrder(
+        order=LimitOrder(
             action=action,
             totalQuantity=float(size),  # Convert Decimal to float for IB API
             lmtPrice=float(price),  # Convert Decimal to float for IB API
