@@ -12,25 +12,30 @@ from src.utils.logger_config import setup_logger
 
 # Configuration
 TRADE_CONFIG = TradingConfig(
-    action=Action.SELL,
-    right=Rights.PUT,
+    action=Action.BUY,
+    right=Rights.CALL,
     min_dte=200,
-    max_dte=300,
-    min_strike=Decimal("180"),
-    max_strike=Decimal("200"),
+    max_dte=400,
+    min_strike=Decimal("45"),
+    max_strike=Decimal("50"),
     size=Decimal("1"),
     manual_min_tick=Decimal("0.01"),
     min_update_size=Decimal("0.05"),
     min_distance=Decimal("0.1"),
-    volatility=0.6,
+    volatility=0.46,
     aggressive=True,
     skip_too_far_away=False,
     oca_type=OCAType.REDUCE_WITH_NO_BLOCK,
     min_ask_price=Decimal("0"),
-    max_bid_price=Decimal("100"),
-    default_stock_price=Decimal("100"),
+    max_bid_price=Decimal("20"),
+    default_stock_price=None,
 )
-
+# Qualify stock contract
+stock = Stock(
+    symbol="1810",
+    exchange="",
+    currency="HKD",
+)
 if __name__ == "__main__":
     # Connect to IBKR
     setup_logger()
@@ -50,12 +55,7 @@ if __name__ == "__main__":
             account=get_ibkr_account("mass_buy_options"),
         )
 
-        # Qualify stock contract
-        stock = Stock(
-            symbol="9988",
-            exchange="",
-            currency="HKD",
-        )
+
         # Run strategy
         await mass_trade_oca_option(ib, exec_ib, stock, TRADE_CONFIG)
 
