@@ -175,7 +175,7 @@ def black_scholes_price(
         raise ValueError("Invalid option_type: must be 'C' or 'P'")
 
     # Adjust underlying price for dividends
-    S_adj = S - pv_dividend
+    S_adj = max(S - pv_dividend, 1e-8)
 
     d1 = (np.log(S_adj / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
@@ -205,32 +205,30 @@ def calculate_var(row: pd.Series, price_factor: float) -> float:
     underlying_price = row["UnderlyingPrice"]
     position = row["Position"]
     multiplier = float(row["Multiplier"]) if row["Multiplier"] else 1
-    position_type = row["PositionType"]
+    sec_type = row["SecType"]
+    right = row["Right"]
     strike = row["Strike"]
     risk_free_rate = row["RiskFreeRate"]
     pv_dividend = row["PVDividend"]
     implied_vol = row["IV"]
     expiration_date = row["LastTradeDateOrContractMonth"]  # Format: yyyymmdd
+    forex_rate = row["ForexRate"]
 
     if pd.isna(underlying_price) or underlying_price <= 0:
         return 0.0
 
-    current = datetime.today()
-
-    expiry_str = str(expiration_date)
-    expiry = datetime.strptime(expiry_str, "%Y%m%d")
-    days_to_expiration = max((expiry - current).days / 365.0, 0)  # Avoid negative T
-
     new_underlying_price = underlying_price * price_factor
 
-    if position_type == "Stock":
+    if sec_type == "STK":
         delta = new_underlying_price - underlying_price
-        return delta * position * multiplier
+        return delta * position * multiplier * forex_rate
 
-    elif position_type in ["Long Call", "Short Call", "Long Put", "Short Put"]:
+    if sec_type == "OPT":
+        current = datetime.today()
+        expiry_str = str(expiration_date)
+        expiry = datetime.strptime(expiry_str, "%Y%m%d")
+        days_to_expiration = max((expiry - current).days / 365.0, 0)  # Avoid negative T
         # Map position type to option type
-        option_type = "C" if "Call" in position_type else "P"
-        is_long = "Long" in position_type
 
         # Current price
         current_price = black_scholes_price(
@@ -240,7 +238,7 @@ def calculate_var(row: pd.Series, price_factor: float) -> float:
             r=risk_free_rate,
             sigma=implied_vol,
             pv_dividend=pv_dividend,
-            option_type=option_type,
+            option_type=right,
         )
 
         # New price after shock
@@ -251,15 +249,14 @@ def calculate_var(row: pd.Series, price_factor: float) -> float:
             r=risk_free_rate,
             sigma=implied_vol,
             pv_dividend=pv_dividend,
-            option_type=option_type,
+            option_type=right,
         )
-
-        change = (new_price - current_price) * (1 if is_long else -1)
-        return change * position * multiplier
+        change = new_price - current_price
+        return change * position * multiplier * forex_rate
 
     else:
         logger.warning(
-            f"Invalid position type: {position_type} for symbol: {row['Symbol']}"
+            f"Invalid position type: {sec_type} for symbol: {row['Symbol']}"
         )
         return 0.0
 
@@ -297,13 +294,16 @@ def process_positions_data(
     )
     positions_df["TargetProfit"] = positions_df.apply(calculate_target_profit, axis=1)
     # 20% drop
-    positions_df["Value_At_Risk_20%"] = positions_df.apply(
-        calculate_var, axis=1, args=(0.8,)
+    positions_df["Value_At_Risk_99%"] = positions_df.apply(
+        calculate_var, axis=1, args=(0.01,)
+    )
+    positions_df["Value_At_Risk_40%"] = positions_df.apply(
+        calculate_var, axis=1, args=(0.6,)
     )
 
     # 40% drop
-    positions_df["Value_At_Risk_40%"] = positions_df.apply(
-        calculate_var, axis=1, args=(0.6,)
+    positions_df["Value_At_Risk_20%"] = positions_df.apply(
+        calculate_var, axis=1, args=(0.8,)
     )
 
     # 20% gain
