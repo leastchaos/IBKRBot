@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from ib_async import IB, Forex, Ticker
+from ib_async import IB, Contract, Forex, Stock, Ticker
 import pandas as pd
 import logging
 
@@ -11,7 +11,11 @@ CACHE_DIR = SCRIPT_DIR / "cache"
 CACHE_FILE = CACHE_DIR / "model_greeks_cache.json"
 # Ensure the cache directory exists
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
+RISK_FREE_RATES = {
+    "HKD": 0.03032,
+    "USD": 0.0453,
+    "SGD": 0.02559,
+}
 
 # Load the cache from the file if it exists
 def load_cache():
@@ -64,7 +68,7 @@ def fetch_balance(ib_client: IB) -> pd.DataFrame:
     return df
 
 
-def fetch_historical_prices(ib_client: IB, contracts: list) -> dict[int, float]:
+def fetch_historical_prices(ib_client: IB, contracts: list[Contract]) -> dict[int, float]:
     logger.info("Fetching historical prices from TWS...")
     historical_prices = {}
     contracts = ib_client.qualifyContracts(*contracts)
@@ -137,16 +141,31 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
     unique_currencies = set()
     contracts = [pos.contract for pos in positions]
     qualified_contracts = ib_client.qualifyContracts(*contracts)
+
+    unique_stocks = [
+        Stock(pos.contract.symbol, pos.contract.exchange, pos.contract.currency)
+        for pos in positions
+    ]
+    qualified_stocks = ib_client.qualifyContracts(*unique_stocks)
     # unclear why individual contract able to get model greeks while all at once could not hence this was switched to single
     ib_client.reqMarketDataType(2)
     tickers = ib_client.reqTickers(*qualified_contracts)
+    stock_tickers = ib_client.reqTickers(*qualified_stocks)
     ib_client.reqMarketDataType(4)
     tickers_backup = ib_client.reqTickers(*qualified_contracts)
+    stock_tickers_backup = ib_client.reqTickers(*qualified_stocks)
+    stock_tickers_dict = {
+        stock_ticker.contract.symbol: stock_ticker for stock_ticker in stock_tickers
+    }
+    stock_tickers_backup_dict = {
+        stock_ticker_backup.contract.symbol: stock_ticker_backup
+        for stock_ticker_backup in stock_tickers_backup
+    }
     for pos, ticker, ticker_backup in zip(positions, tickers, tickers_backup):
         contract = pos.contract
         contracts.append(contract)
         unique_currencies.add(contract.currency)
-        delta, gamma, theta, vega = 1, 0, 0, 0
+        delta, gamma, theta, vega, iv, pvDividend = 1, 0, 0, 0, 0, 0
         model_greeks = (
             ticker.modelGreeks if ticker.modelGreeks else ticker_backup.modelGreeks
         )
@@ -156,12 +175,16 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "gamma": model_greeks.gamma,
                 "theta": model_greeks.theta,
                 "vega": model_greeks.vega,
+                "impliedVol": model_greeks.impliedVol,
+                "pvDividend": model_greeks.pvDividend,
             }
+            
         if model_greeks is None and contract.secType == "OPT":
             logger.info(
                 f"Fetching cached model greeks for {contract.symbol} with conId {contract.conId}..."
             )
             model_greeks = model_greeks_cache.get(str(contract.conId))
+            print(model_greeks)
 
         if model_greeks:
             logger.info(
@@ -171,12 +194,17 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
             gamma = model_greeks["gamma"]
             theta = model_greeks["theta"]
             vega = model_greeks["vega"]
+            iv = model_greeks["impliedVol"]
+            pvDividend = model_greeks["pvDividend"]
+
             # Update cache with newly fetched model Greeks
             model_greeks_cache[str(contract.conId)] = {
                 "delta": delta,
                 "gamma": gamma,
                 "theta": theta,
                 "vega": vega,
+                "impliedVol": iv,
+                "pvDividend": pvDividend,
             }
             save_cache(model_greeks_cache)  # Save updated cache
         multiplier = contract.multiplier if contract.multiplier != "" else 1
@@ -203,6 +231,11 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "Gamma": gamma,
                 "Theta": theta,
                 "Vega": vega,
+                "IV": iv,
+                "PVDividend": pvDividend,
+                "RiskFreeRate": RISK_FREE_RATES[contract.currency],
+                "UnderlyingPrice": stock_tickers_dict[contract.symbol].marketPrice()
+                or stock_tickers_backup_dict[contract.symbol].marketPrice(),
             }
         )
     logger.info("Positions fetched successfully.")
@@ -213,7 +246,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
     }
     df["ForexRate"] = df["Currency"].map(forex_rates)
     print(df.head())
-    df["MarketPrice"] = df["MarketPrice"].fillna(df["AvgCost"]/df["Multiplier"])
+    df["MarketPrice"] = df["MarketPrice"].fillna(df["AvgCost"] / df["Multiplier"])
     return df
 
 

@@ -12,27 +12,28 @@ from src.utils.logger_config import setup_logger
 
 # Configuration
 TRADE_CONFIG = TradingConfig(
-    action=Action.BUY,
-    right=Rights.CALL,
-    min_dte=200,
-    max_dte=400,
-    min_strike=Decimal("45"),
-    max_strike=Decimal("50"),
+    action=Action.SELL,
+    right=Rights.PUT,
+    min_dte=10,
+    max_dte=30,
+    min_strike=Decimal("140"),
+    max_strike=Decimal("145"),
     size=Decimal("1"),
     manual_min_tick=Decimal("0.01"),
-    min_update_size=Decimal("0.05"),
-    min_distance=Decimal("0.1"),
-    volatility=0.46,
+    min_update_size=Decimal("0.1"),
+    min_distance=Decimal("0.2"),
+    volatility=0.45,
     aggressive=True,
     skip_too_far_away=False,
     oca_type=OCAType.REDUCE_WITH_NO_BLOCK,
     min_ask_price=Decimal("0"),
     max_bid_price=Decimal("20"),
     default_stock_price=None,
+    loop_interval=0.1,
 )
 # Qualify stock contract
 stock = Stock(
-    symbol="1810",
+    symbol="9618",
     exchange="",
     currency="HKD",
 )
@@ -58,5 +59,7 @@ if __name__ == "__main__":
 
         # Run strategy
         await mass_trade_oca_option(ib, exec_ib, stock, TRADE_CONFIG)
+        ib.portfolio()
 
     asyncio.run(main())
+

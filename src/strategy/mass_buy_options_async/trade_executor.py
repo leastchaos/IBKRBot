@@ -156,7 +156,7 @@ async def process_option(
     except (KeyboardInterrupt, asyncio.exceptions.CancelledError):
         logger.info("KeyboardInterrupt detected. Canceling orders...")
         if trade is not None:
-            ib.cancelOrder(trade)
+            exec_ib.cancelOrder(trade)
 
         raise KeyboardInterrupt
     # except Exception as e:
@@ -220,7 +220,7 @@ async def mass_trade_oca_option(
             if trade.isDone():
                 continue
             logging.info(f"Canceling order: {trade.order.action} {trade.order.totalQuantity} @ {trade.order.lmtPrice}")
-            ib.cancelOrder(trade.order)
+            exec_ib.cancelOrder(trade.order)
         for task in active_tasks:
             if task.done():
                 continue

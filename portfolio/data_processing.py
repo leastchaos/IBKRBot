@@ -1,5 +1,9 @@
+from typing import Literal
 import pandas as pd
 import logging
+from scipy.stats import norm
+import numpy as np
+from datetime import datetime
 
 # Access the already-configured logger
 logger = logging.getLogger()
@@ -138,6 +142,128 @@ def calculate_target_profit(row: pd.Series) -> float:
     return 0
 
 
+def black_scholes_price(
+    S: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    pv_dividend: float = 0.0,  # New: present value of dividends
+    option_type: Literal["C", "P"] = "C",
+) -> float:
+    """
+    Calculate the theoretical price of a European option using the Black-Scholes formula,
+    adjusted for discrete dividends via present value subtraction.
+
+    Parameters:
+    - S: Current underlying price
+    - K: Option strike price
+    - T: Time to expiration in years
+    - r: Risk-free interest rate (annual)
+    - sigma: Volatility of the underlying asset (annual)
+    - pv_dividend: Present value of expected dividends during option's lifetime
+    - option_type: 'C' for call, 'P' for put
+
+    Returns:
+    - Option price
+    """
+    if T <= 0:
+        if option_type == "C":
+            return max(S - K, 0)
+        if option_type == "P":
+            return max(K - S, 0)
+        raise ValueError("Invalid option_type: must be 'C' or 'P'")
+
+    # Adjust underlying price for dividends
+    S_adj = S - pv_dividend
+
+    d1 = (np.log(S_adj / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+
+    if option_type == "C":
+        price = S_adj * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+    elif option_type == "P":
+        price = K * np.exp(-r * T) * norm.cdf(-d2) - S_adj * norm.cdf(-d1)
+    else:
+        raise ValueError("Invalid option_type: must be 'C' or 'P'")
+
+    return price
+
+
+def calculate_var(row: pd.Series, price_factor: float) -> float:
+    """
+    Calculate Value at Risk (VaR) for a position based on a price shock (price_factor).
+
+    Parameters:
+    - row: A pandas Series containing position details
+    - price_factor: Multiplier to shock the underlying price (e.g., 1.05 for +5%)
+    - current_date: Optional current date (YYYY-MM-DD) for time-to-expiry calculation
+
+    Returns:
+    - VaR in monetary terms
+    """
+    underlying_price = row["UnderlyingPrice"]
+    position = row["Position"]
+    multiplier = float(row["Multiplier"]) if row["Multiplier"] else 1
+    position_type = row["PositionType"]
+    strike = row["Strike"]
+    risk_free_rate = row["RiskFreeRate"]
+    pv_dividend = row["PVDividend"]
+    implied_vol = row["IV"]
+    expiration_date = row["LastTradeDateOrContractMonth"]  # Format: yyyymmdd
+
+    if pd.isna(underlying_price) or underlying_price <= 0:
+        return 0.0
+
+    current = datetime.today()
+
+    expiry_str = str(expiration_date)
+    expiry = datetime.strptime(expiry_str, "%Y%m%d")
+    days_to_expiration = max((expiry - current).days / 365.0, 0)  # Avoid negative T
+
+    new_underlying_price = underlying_price * price_factor
+
+    if position_type == "Stock":
+        delta = new_underlying_price - underlying_price
+        return delta * position * multiplier
+
+    elif position_type in ["Long Call", "Short Call", "Long Put", "Short Put"]:
+        # Map position type to option type
+        option_type = "C" if "Call" in position_type else "P"
+        is_long = "Long" in position_type
+
+        # Current price
+        current_price = black_scholes_price(
+            S=underlying_price,
+            K=strike,
+            T=days_to_expiration,
+            r=risk_free_rate,
+            sigma=implied_vol,
+            pv_dividend=pv_dividend,
+            option_type=option_type,
+        )
+
+        # New price after shock
+        new_price = black_scholes_price(
+            S=new_underlying_price,
+            K=strike,
+            T=days_to_expiration,
+            r=risk_free_rate,
+            sigma=implied_vol,
+            pv_dividend=pv_dividend,
+            option_type=option_type,
+        )
+
+        change = (new_price - current_price) * (1 if is_long else -1)
+        return change * position * multiplier
+
+    else:
+        logger.warning(
+            f"Invalid position type: {position_type} for symbol: {row['Symbol']}"
+        )
+        return 0.0
+
+
 def process_positions_data(
     positions_df: pd.DataFrame,
     scenario_df: pd.DataFrame,
@@ -170,5 +296,25 @@ def process_positions_data(
         calculate_worst_case_risk, axis=1
     )
     positions_df["TargetProfit"] = positions_df.apply(calculate_target_profit, axis=1)
+    # 20% drop
+    positions_df["Value_At_Risk_20%"] = positions_df.apply(
+        calculate_var, axis=1, args=(0.8,)
+    )
+
+    # 40% drop
+    positions_df["Value_At_Risk_40%"] = positions_df.apply(
+        calculate_var, axis=1, args=(0.6,)
+    )
+
+    # 20% gain
+    positions_df["Value_At_Gain_20%"] = positions_df.apply(
+        calculate_var, axis=1, args=(1.2,)
+    )
+
+    # 40% gain
+    positions_df["Value_At_Gain_40%"] = positions_df.apply(
+        calculate_var, axis=1, args=(1.4,)
+    )
+
     logger.info("Positions data processed successfully.")
     return positions_df

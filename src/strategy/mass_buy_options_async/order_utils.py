@@ -36,11 +36,17 @@ async def manage_open_order(
         )
         return
     if price == lmt_price:
+        logger.info(
+            f"Order {option_display(trade.contract)} limit price is already {price}. Skipping update."
+        )
         return
     if (
         not config.aggressive
         and (price - lmt_price).copy_abs() < config.min_update_size
     ):
+        logger.info(
+            f"Not updating {option_display(trade.contract)} price from {trade.order.lmtPrice} to {price} (aggressive)"
+        )
         return
     if (lmt_price - price).copy_abs() >= config.min_update_size:
         logger.info(
