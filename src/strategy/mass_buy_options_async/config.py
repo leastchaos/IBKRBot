@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 from decimal import Decimal
 from datetime import datetime
+import logging
 from src.models.models import Action, Rights, OCAType
 from functools import cached_property
+
+
 @dataclass
 class TradingConfig:
     # Strategy Parameters
@@ -29,6 +32,45 @@ class TradingConfig:
     default_stock_price: Decimal | None = None
     option_timeout: int = 1
     stock_timeout: int = 5
+    min_underlying_price: Decimal | None = None
+    max_underlying_price: Decimal | None = None
+
+    def __post_init__(self):
+        if (
+            self.action == Action.BUY
+            and self.right == Rights.PUT
+            and self.max_underlying_price is not None
+        ):
+            self.underlying_warning(warn_max_underlying_price=False)
+        if (
+            self.action == Action.SELL
+            and self.right == Rights.PUT
+            and self.min_underlying_price is not None
+        ):
+            self.underlying_warning(warn_max_underlying_price=True)
+        if (
+            self.action == Action.BUY
+            and self.right == Rights.CALL
+            and self.min_underlying_price is not None
+        ):
+            self.underlying_warning(warn_max_underlying_price=False)
+        if (
+            self.action == Action.SELL
+            and self.right == Rights.CALL
+            and self.max_underlying_price is not None
+        ):
+            self.underlying_warning(warn_max_underlying_price=True)
+
+    def underlying_warning(self, warn_max_underlying_price: bool = False):
+        logging.warning(
+            f"You are setting up to {self.action.value} a {self.right.value} option with a specified "
+            f"{'max_underlying_price' if warn_max_underlying_price else 'min_underlying_price'} "
+            f"({self.max_underlying_price if warn_max_underlying_price else self.min_underlying_price}). "
+            f"This configuration might lead to {"selling" if self.action == Action.SELL else "buying"} at a "
+            f"{'lower' if self.action == Action.SELL else 'higher'} price than "
+            f"necessary if the underlying price is expected to be {'lower' if warn_max_underlying_price else 'higher'}."
+        )
+        input("Press Enter to continue...")
 
     # Default OCA group name
     @cached_property
@@ -38,7 +80,7 @@ class TradingConfig:
         return f"Mass Trade {datetime.now().strftime('%Y%m%d %H:%M:%S')}"
 
     @classmethod
-    def generate_test_config(cls) -> 'TradingConfig':
+    def generate_test_config(cls) -> "TradingConfig":
         return TradingConfig(
             action=Action.BUY,
             right=Rights.CALL,
@@ -59,6 +101,7 @@ class TradingConfig:
             stock_timeout=1,
             default_stock_price=Decimal("100"),
         )
+
 
 if __name__ == "__main__":
     print(TradingConfig.generate_test_config())

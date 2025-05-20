@@ -49,6 +49,18 @@ def get_stock_price(stock_ticker: Ticker, config: TradingConfig) -> float:
         if config.default_stock_price:
             logger.warning(f"Using default stock price: {config.default_stock_price}")
             return config.default_stock_price
+    if config.min_underlying_price and market_price < config.min_underlying_price:
+        logger.warning(
+            f"Market price {market_price} is below min_underlying_price {config.min_underlying_price}"
+            ", returning min_underlying_price"
+        )
+        return config.min_underlying_price
+    if config.max_underlying_price and market_price > config.max_underlying_price:
+        logger.warning(
+            f"Market price {market_price} is above max_underlying_price {config.max_underlying_price}"
+            ", returning max_underlying_price"
+        )
+        return config.max_underlying_price
     return market_price
 
 
@@ -76,6 +88,7 @@ async def determine_price(
     if isnan(market_price):
         logger.warning("Market price is NaN, returning -1")
         return Decimal("-1")
+    
     option_calculation = await ib.calculateOptionPriceAsync(
         option_ticker.contract, config.volatility, market_price
     )
