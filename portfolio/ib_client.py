@@ -17,6 +17,7 @@ RISK_FREE_RATES = {
     "SGD": 0.02559,
 }
 
+
 # Load the cache from the file if it exists
 def load_cache():
     if CACHE_FILE.exists():
@@ -68,7 +69,9 @@ def fetch_balance(ib_client: IB) -> pd.DataFrame:
     return df
 
 
-def fetch_historical_prices(ib_client: IB, contracts: list[Contract]) -> dict[int, float]:
+def fetch_historical_prices(
+    ib_client: IB, contracts: list[Contract]
+) -> dict[int, float]:
     logger.info("Fetching historical prices from TWS...")
     historical_prices = {}
     contracts = ib_client.qualifyContracts(*contracts)
@@ -133,6 +136,7 @@ def fetch_currency_rate(
         return 1 / bars[-1].close
     return None
 
+
 def fetch_iv_rank_percentile(ib_client: IB, contract: Contract) -> tuple[float, float]:
     bars = ib_client.reqHistoricalData(
         contract,
@@ -143,7 +147,7 @@ def fetch_iv_rank_percentile(ib_client: IB, contract: Contract) -> tuple[float, 
         useRTH=False,
     )
     if not bars:
-        return -1
+        return -1, -1
     min_iv = min(bars, key=lambda bar: bar.close)
     max_iv = max(bars, key=lambda bar: bar.close)
     current_iv = bars[-1].close
@@ -181,12 +185,18 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
         stock_ticker_backup.contract.symbol: stock_ticker_backup
         for stock_ticker_backup in stock_tickers_backup
     }
+    iv_rank_percentile_dict = {
+        stock_ticker.contract.symbol: fetch_iv_rank_percentile(
+            ib_client, stock_ticker.contract
+        )
+        for stock_ticker in stock_tickers
+    }
     for pos, ticker, ticker_backup in zip(positions, tickers, tickers_backup):
         contract = pos.contract
         contracts.append(contract)
         unique_currencies.add(contract.currency)
-        delta, gamma, theta, vega, iv, pvDividend, iv_rank, iv_percentile = 1, 0, 0, 0, 0, 0, -1, -1
-        iv_rank, iv_percentile = fetch_iv_rank_percentile(ib_client, contract)
+        delta, gamma, theta, vega, iv, pvDividend = 1, 0, 0, 0, 0, 0
+        iv_rank, iv_percentile = iv_rank_percentile_dict.get(contract.symbol, (-1, -1))
         model_greeks = (
             ticker.modelGreeks if ticker.modelGreeks else ticker_backup.modelGreeks
         )
@@ -199,9 +209,9 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "impliedVol": model_greeks.impliedVol,
                 "pvDividend": model_greeks.pvDividend,
                 "ivRank": iv_rank,
-                "ivPercentile": iv_percentile
+                "ivPercentile": iv_percentile,
             }
-            
+
         if model_greeks is None and contract.secType == "OPT":
             logger.info(
                 f"Fetching cached model greeks for {contract.symbol} with conId {contract.conId}..."
@@ -231,7 +241,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "impliedVol": iv,
                 "pvDividend": pvDividend,
                 "ivRank_52w": iv_rank,
-                "ivPercentile_52w": iv_percentile
+                "ivPercentile_52w": iv_percentile,
             }
             save_cache(model_greeks_cache)  # Save updated cache
         multiplier = contract.multiplier if contract.multiplier != "" else 1
