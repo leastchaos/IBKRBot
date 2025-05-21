@@ -253,7 +253,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "Vega": vega,
                 "IV": iv,
                 "PVDividend": pvDividend,
-                "IVRank": iv_rank,
+                "IVRank_52W": iv_rank,
                 "RiskFreeRate": RISK_FREE_RATES[contract.currency],
                 "UnderlyingPrice": stock_tickers_dict[contract.symbol].marketPrice()
                 or stock_tickers_backup_dict[contract.symbol].marketPrice(),
