@@ -133,6 +133,22 @@ def fetch_currency_rate(
         return 1 / bars[-1].close
     return None
 
+def fetch_iv_rank(ib_client: IB, contract: Contract) -> float:
+    bars = ib_client.reqHistoricalData(
+        contract,
+        endDateTime="",
+        durationStr="52 W",
+        barSizeSetting="1 day",
+        whatToShow="OPTION_IMPLIED_VOLATILITY",
+        useRTH=False,
+    )
+    if not bars:
+        return -1
+    min_iv = min(bars, key=lambda bar: bar.close)
+    max_iv = max(bars, key=lambda bar: bar.close)
+    current_iv = bars[-1].close
+    return (current_iv - min_iv.close) / (max_iv.close - min_iv.close)
+
 
 def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
     logger.info("Fetching positions from TWS...")
@@ -165,7 +181,8 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
         contract = pos.contract
         contracts.append(contract)
         unique_currencies.add(contract.currency)
-        delta, gamma, theta, vega, iv, pvDividend = 1, 0, 0, 0, 0, 0
+        delta, gamma, theta, vega, iv, pvDividend, iv_rank = 1, 0, 0, 0, 0, 0, -1
+        iv_rank = fetch_iv_rank(ib_client, contract)
         model_greeks = (
             ticker.modelGreeks if ticker.modelGreeks else ticker_backup.modelGreeks
         )
@@ -177,6 +194,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "vega": model_greeks.vega,
                 "impliedVol": model_greeks.impliedVol,
                 "pvDividend": model_greeks.pvDividend,
+                "ivRank": iv_rank,
             }
             
         if model_greeks is None and contract.secType == "OPT":
@@ -196,6 +214,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
             vega = model_greeks["vega"]
             iv = model_greeks["impliedVol"]
             pvDividend = model_greeks["pvDividend"]
+            iv_rank = model_greeks.get("ivRank", -1)
 
             # Update cache with newly fetched model Greeks
             model_greeks_cache[str(contract.conId)] = {
@@ -205,6 +224,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "vega": vega,
                 "impliedVol": iv,
                 "pvDividend": pvDividend,
+                "ivRank": iv_rank,
             }
             save_cache(model_greeks_cache)  # Save updated cache
         multiplier = contract.multiplier if contract.multiplier != "" else 1
@@ -233,6 +253,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "Vega": vega,
                 "IV": iv,
                 "PVDividend": pvDividend,
+                "IVRank": iv_rank,
                 "RiskFreeRate": RISK_FREE_RATES[contract.currency],
                 "UnderlyingPrice": stock_tickers_dict[contract.symbol].marketPrice()
                 or stock_tickers_backup_dict[contract.symbol].marketPrice(),
@@ -254,6 +275,12 @@ if __name__ == "__main__":
     ib_client = IB()
     ib_client.connect("127.0.0.1", 7496, clientId=1, readonly=True)
     ib_client.reqMarketDataType(4)
+    contract = Contract(
+        symbol="9988",
+        secType="STK",
+        exchange="",
+        currency="HKD",
+    )
     balance = fetch_balance(ib_client)
     print(balance)
     position = fetch_positions(ib_client)
