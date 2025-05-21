@@ -133,7 +133,7 @@ def fetch_currency_rate(
         return 1 / bars[-1].close
     return None
 
-def fetch_iv_rank(ib_client: IB, contract: Contract) -> float:
+def fetch_iv_rank_percentile(ib_client: IB, contract: Contract) -> tuple[float, float]:
     bars = ib_client.reqHistoricalData(
         contract,
         endDateTime="",
@@ -147,7 +147,11 @@ def fetch_iv_rank(ib_client: IB, contract: Contract) -> float:
     min_iv = min(bars, key=lambda bar: bar.close)
     max_iv = max(bars, key=lambda bar: bar.close)
     current_iv = bars[-1].close
-    return (current_iv - min_iv.close) / (max_iv.close - min_iv.close)
+    iv_rank = (current_iv - min_iv.close) / (max_iv.close - min_iv.close)
+    # find the percentile where the current iv is located
+    sorted_ivs = sorted(bars, key=lambda bar: bar.close)
+    percentile = (sorted_ivs.index(bars[-1]) + 1) / len(sorted_ivs)
+    return iv_rank, percentile
 
 
 def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
@@ -181,8 +185,8 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
         contract = pos.contract
         contracts.append(contract)
         unique_currencies.add(contract.currency)
-        delta, gamma, theta, vega, iv, pvDividend, iv_rank = 1, 0, 0, 0, 0, 0, -1
-        iv_rank = fetch_iv_rank(ib_client, contract)
+        delta, gamma, theta, vega, iv, pvDividend, iv_rank, iv_percentile = 1, 0, 0, 0, 0, 0, -1, -1
+        iv_rank, iv_percentile = fetch_iv_rank_percentile(ib_client, contract)
         model_greeks = (
             ticker.modelGreeks if ticker.modelGreeks else ticker_backup.modelGreeks
         )
@@ -195,6 +199,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "impliedVol": model_greeks.impliedVol,
                 "pvDividend": model_greeks.pvDividend,
                 "ivRank": iv_rank,
+                "ivPercentile": iv_percentile
             }
             
         if model_greeks is None and contract.secType == "OPT":
@@ -214,7 +219,8 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
             vega = model_greeks["vega"]
             iv = model_greeks["impliedVol"]
             pvDividend = model_greeks["pvDividend"]
-            iv_rank = model_greeks.get("ivRank", -1)
+            iv_rank = model_greeks.get("ivRank_52w", -1)
+            iv_percentile = model_greeks.get("ivPercentile_52w", -1)
 
             # Update cache with newly fetched model Greeks
             model_greeks_cache[str(contract.conId)] = {
@@ -224,7 +230,8 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "vega": vega,
                 "impliedVol": iv,
                 "pvDividend": pvDividend,
-                "ivRank": iv_rank,
+                "ivRank_52w": iv_rank,
+                "ivPercentile_52w": iv_percentile
             }
             save_cache(model_greeks_cache)  # Save updated cache
         multiplier = contract.multiplier if contract.multiplier != "" else 1
@@ -254,6 +261,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "IV": iv,
                 "PVDividend": pvDividend,
                 "IVRank_52W": iv_rank,
+                "IVPercentile_52W": iv_percentile,
                 "RiskFreeRate": RISK_FREE_RATES[contract.currency],
                 "UnderlyingPrice": stock_tickers_dict[contract.symbol].marketPrice()
                 or stock_tickers_backup_dict[contract.symbol].marketPrice(),
