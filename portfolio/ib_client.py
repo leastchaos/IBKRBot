@@ -208,8 +208,8 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "vega": model_greeks.vega,
                 "impliedVol": model_greeks.impliedVol,
                 "pvDividend": model_greeks.pvDividend,
-                "ivRank": iv_rank,
-                "ivPercentile": iv_percentile,
+                "ivRank_52w": iv_rank,
+                "ivPercentile_52w": iv_percentile,
             }
 
         if model_greeks is None and contract.secType == "OPT":

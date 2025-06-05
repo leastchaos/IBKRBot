@@ -14,15 +14,15 @@ from src.utils.logger_config import setup_logger
 TRADE_CONFIG = TradingConfig(
     action=Action.BUY,
     right=Rights.PUT,
-    min_dte=200,
-    max_dte=400,
-    min_strike=Decimal("110"),
-    max_strike=Decimal("120"),
+    min_dte=300,
+    max_dte=380,
+    min_strike=Decimal("95"),
+    max_strike=Decimal("105"),
     size=Decimal("1"),
     manual_min_tick=Decimal("0.01"),
-    min_update_size=Decimal("0.05"),
-    min_distance=Decimal("0.2"),
-    volatility=0.43,
+    min_update_size=Decimal("0.1"),
+    min_distance=Decimal("0.5"),
+    volatility=0.37,
     aggressive=True,
     skip_too_far_away=False,
     oca_type=OCAType.REDUCE_WITH_NO_BLOCK,
@@ -30,12 +30,12 @@ TRADE_CONFIG = TradingConfig(
     max_bid_price=Decimal("20"),
     default_stock_price=None,
     loop_interval=0.1,
-    min_underlying_price=Decimal("150.5"),
+    min_underlying_price=None,
     max_underlying_price=None,
 )
 # Qualify stock contract
 stock = Stock(
-    symbol="9618",
+    symbol="9988",
     exchange="",
     currency="HKD",
 )

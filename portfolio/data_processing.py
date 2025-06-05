@@ -255,10 +255,32 @@ def calculate_var(row: pd.Series, price_factor: float) -> float:
         return change * position * multiplier * forex_rate
 
     else:
-        logger.warning(
-            f"Invalid position type: {sec_type} for symbol: {row['Symbol']}"
-        )
+        logger.warning(f"Invalid position type: {sec_type} for symbol: {row['Symbol']}")
         return 0.0
+
+
+def calculate_instrinsic_value(row: pd.Series) -> float:
+    if row["SecType"] == "STK":
+        return row["MarketValue"]
+    position = row["Position"]
+    multiplier = float(row["Multiplier"]) if row["Multiplier"] else 1
+    underlying_price = row["UnderlyingPrice"]
+    strike_price = row["Strike"]
+    right = row["Right"]
+    forex_rate = row["ForexRate"]
+
+    if right == "C":
+        return (
+            position * max(underlying_price - strike_price, 0) * multiplier * forex_rate
+        )
+    if right == "P":
+        return (
+            position * max(strike_price - underlying_price, 0) * multiplier * forex_rate
+        )
+    logger.warning(
+        f"Invalid position type: {row['SecType']} for symbol: {row['Symbol']}"
+    )
+    return 0
 
 
 def process_positions_data(
@@ -314,6 +336,29 @@ def process_positions_data(
     # 40% gain
     positions_df["Value_At_Gain_40%"] = positions_df.apply(
         calculate_var, axis=1, args=(1.4,)
+    )
+
+    # strike * position
+    positions_df["StrikePositions"] = positions_df["Strike"] * positions_df["Position"]
+
+    positions_df["CostBasis"] = (
+        positions_df["AvgCost"]
+        * positions_df["Position"]
+        * positions_df["ForexRate"]
+    )
+
+    positions_df["MarketValue"] = (
+        positions_df["MarketPrice"]
+        * positions_df["Position"]
+        * positions_df["Multiplier"]
+        * positions_df["ForexRate"]
+    )
+
+    positions_df["InstrinsicValue"] = positions_df.apply(
+        calculate_instrinsic_value, axis=1
+    )
+    positions_df["TimeValue"] = (
+        positions_df["MarketValue"] - positions_df["InstrinsicValue"]
     )
 
     logger.info("Positions data processed successfully.")
