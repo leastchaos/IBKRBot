@@ -4,3 +4,6 @@ __pycache__
 *.csv
 *.egg-info
 *.txt
+.env
+*.png
+downloads\*

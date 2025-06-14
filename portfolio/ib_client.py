@@ -16,7 +16,9 @@ RISK_FREE_RATES = {
     "USD": 0.0453,
     "SGD": 0.02559,
 }
-
+SPECIAL_SYMBOL = {
+    "BABA2": "BABA",
+}
 
 # Load the cache from the file if it exists
 def load_cache():
@@ -35,6 +37,11 @@ def save_cache(cache):
 # Initialize the cache
 model_greeks_cache = load_cache()
 
+
+def get_underlying_symbol(symbol: str):
+    if symbol in SPECIAL_SYMBOL:
+        return SPECIAL_SYMBOL[symbol]
+    return symbol
 
 def fetch_balance(ib_client: IB) -> pd.DataFrame:
     """
@@ -101,7 +108,7 @@ def fetch_historical_prices(
                 continue
             historical_prices[contract.conId] = None
         except Exception as e:
-            print(f"Error fetching historical data for {contract.symbol}: {e}")
+            print(f"Error fetching historical data for {get_underlying_symbol(contract.symbol)}: {e}")
             historical_prices[contract.conId] = None
     logger.info("Historical prices fetched successfully.")
     return historical_prices
@@ -167,7 +174,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
     qualified_contracts = ib_client.qualifyContracts(*contracts)
 
     unique_stocks = [
-        Stock(pos.contract.symbol, pos.contract.exchange, pos.contract.currency)
+        Stock(get_underlying_symbol(pos.contract.symbol), pos.contract.exchange, pos.contract.currency)
         for pos in positions
     ]
     qualified_stocks = ib_client.qualifyContracts(*unique_stocks)
@@ -179,14 +186,14 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
     tickers_backup = ib_client.reqTickers(*qualified_contracts)
     stock_tickers_backup = ib_client.reqTickers(*qualified_stocks)
     stock_tickers_dict = {
-        stock_ticker.contract.symbol: stock_ticker for stock_ticker in stock_tickers
+        get_underlying_symbol(stock_ticker.contract.symbol): stock_ticker for stock_ticker in stock_tickers
     }
     stock_tickers_backup_dict = {
-        stock_ticker_backup.contract.symbol: stock_ticker_backup
+        get_underlying_symbol(stock_ticker_backup.contract.symbol): stock_ticker_backup
         for stock_ticker_backup in stock_tickers_backup
     }
     iv_rank_percentile_dict = {
-        stock_ticker.contract.symbol: fetch_iv_rank_percentile(
+        get_underlying_symbol(stock_ticker.contract.symbol): fetch_iv_rank_percentile(
             ib_client, stock_ticker.contract
         )
         for stock_ticker in stock_tickers
@@ -196,7 +203,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
         contracts.append(contract)
         unique_currencies.add(contract.currency)
         delta, gamma, theta, vega, iv, pvDividend = 1, 0, 0, 0, 0, 0
-        iv_rank, iv_percentile = iv_rank_percentile_dict.get(contract.symbol, (-1, -1))
+        iv_rank, iv_percentile = iv_rank_percentile_dict.get(get_underlying_symbol(contract.symbol), (-1, -1))
         model_greeks = (
             ticker.modelGreeks if ticker.modelGreeks else ticker_backup.modelGreeks
         )
@@ -214,14 +221,14 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
 
         if model_greeks is None and contract.secType == "OPT":
             logger.info(
-                f"Fetching cached model greeks for {contract.symbol} with conId {contract.conId}..."
+                f"Fetching cached model greeks for {get_underlying_symbol(contract.symbol)} with conId {contract.conId}..."
             )
             model_greeks = model_greeks_cache.get(str(contract.conId))
             print(model_greeks)
 
         if model_greeks:
             logger.info(
-                f"Model greeks for {contract.symbol} with conId {contract.conId} fetched successfully."
+                f"Model greeks for {get_underlying_symbol(contract.symbol)} with conId {contract.conId} fetched successfully."
             )
             delta = model_greeks["delta"]
             gamma = model_greeks["gamma"]
@@ -248,7 +255,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
         position_data.append(
             {
                 "Account": pos.account,
-                "Symbol": contract.symbol,
+                "Symbol": get_underlying_symbol(contract.symbol),
                 "SecType": contract.secType,
                 "Currency": contract.currency,
                 "Position": pos.position,
@@ -273,8 +280,8 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "IVRank_52W": iv_rank,
                 "IVPercentile_52W": iv_percentile,
                 "RiskFreeRate": RISK_FREE_RATES[contract.currency],
-                "UnderlyingPrice": stock_tickers_dict[contract.symbol].marketPrice()
-                or stock_tickers_backup_dict[contract.symbol].marketPrice(),
+                "UnderlyingPrice": stock_tickers_dict[get_underlying_symbol(contract.symbol)].marketPrice()
+                or stock_tickers_backup_dict[get_underlying_symbol(contract.symbol)].marketPrice(),
             }
         )
     logger.info("Positions fetched successfully.")
