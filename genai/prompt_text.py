@@ -82,3 +82,7 @@ Define a clear price range for entering a long position or exiting an existing p
 Your analysis should be based solely on publicly available information up to the present date.
 
 The stock ticker to be analyzed is """
+
+PROMPT_TEXT_4 = """
+From the detailed report above, provide a financial analysis summary with the investment direction, entry range and exit range for a Telegram message.
+"""
