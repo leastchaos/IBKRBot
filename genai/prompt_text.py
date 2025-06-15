@@ -1,5 +1,4 @@
-PROMPT_TEXT = """
-Act as a senior stock specialist preparing a formal presentation for a highly critical investment board.
+PROMPT_TEXT = """Act as a senior stock specialist preparing a formal presentation for a highly critical investment board.
 Your task is to identify and present a compelling investment thesis on one to two undervalued stocks. Your analysis must be original, deeply analytical, and not a mere aggregation of analyst consensus.
 The primary criteria are that these stocks possess significant short-term rally potential (3-6 months) while also having fundamentals, assets, or a strategic position strong enough to justify a long-term hold (3-5+ years) without the necessity of a stop-loss.
 //-- STRICT CRITERIA FOR STOCK SELECTION --//
