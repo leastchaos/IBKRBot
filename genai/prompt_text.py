@@ -44,9 +44,41 @@ Every investment has risks. Identify 2-3 primary risks to your thesis (e.g., exe
 Buy Range: Determine a precise price range for initiating a position (e.g., "$50.00 - $55.00").
 Price Target / Exit Range: Define a realistic price target based on your valuation analysis for taking profits or re-evaluating the position post-catalyst (e.g., "$75.00 - $80.00").
 """
-PROMPT_TEXT_2 = """Analyze the preceding report and extract every stock ticker mentioned and its corresponding primary stock exchange.
+PROMPT_TEXT_2 = """Analyze the preceding report and extract the main stock tickers being analyzed and its corresponding primary stock exchange.
 Your response must contain ONLY a comma-separated list of exchange-ticker pairs using the format EXCHANGE:TICKER.
 If the exchange is not explicitly mentioned for a ticker, use the ticker's main listing exchange. 
 Do not include any other text, headers, or explanations.
 Example format: NASDAQ:AAPL, NYSE:BRK.A, SEHK:9988, NASDAQ:NVDA
 """
+
+PROMPT_TEXT_3 = """You are a seasoned equity research analyst preparing a comprehensive investment thesis for your firm's investment board. Your analysis should be objective, data-driven, and culminate in a clear "Buy," "Sell," or "Hold" recommendation for the stock.
+Your presentation must be structured as follows:
+1. Executive Summary:
+Provide a concise overview of the company.
+State your investment thesis (Buy/Sell/Hold).
+Summarize the key drivers for your recommendation.
+Specify your proposed price target and the recommended range for entry or exit.
+There should be sufficient margin of safety for the entry
+2. Company Overview:
+Briefly describe the company's business model, its products or services, and the industry it operates in.
+Outline its key competitive advantages and market position.
+3. Investment Thesis & Key Drivers:
+For a "Buy" recommendation: Detail the primary catalysts for growth, such as upcoming product launches, market expansion, positive industry trends, or undervaluation.
+For a "Sell" recommendation: Detail the primary red flags, such as declining financials, increasing competition, secular headwinds, or overvaluation.
+Support your arguments with recent news, financial data, and market analysis. You can add options analysis and insider buying if it is supported
+4. Fundamental Analysis:
+Provide an overview of the company's financial health, including key metrics like revenue growth, profitability (e.g., net income, EBITDA), and balance sheet strength (e.g., debt-to-equity ratio).
+Discuss the company's valuation multiples (e.g., P/E, P/S, EV/EBITDA) in comparison to its historical averages and industry peers.
+5. Technical Analysis:
+Analyze the stock's recent price action and chart patterns.
+Identify key support and resistance levels.
+Mention relevant technical indicators (e.g., moving averages, RSI, MACD) and what they suggest about the stock's momentum.
+6. Risk Assessment:
+Identify and explain the key risks to your investment thesis. These could include macroeconomic factors, competitive threats, regulatory changes, or company-specific execution risks.
+7. Conclusion & Recommendation:
+Reiterate your investment thesis (Buy/Sell/Hold).
+Provide a specific price target.
+Define a clear price range for entering a long position or exiting an existing position.
+Your analysis should be based solely on publicly available information up to the present date.
+
+The stock ticker to be analyzed is """
