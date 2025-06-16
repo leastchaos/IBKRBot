@@ -218,6 +218,7 @@ def download_google_doc_as_pdf(
         pdf_export_url = f"{base_url}/export?format=pdf"
         response = requests.get(pdf_export_url, stream=True, timeout=60)
         response.raise_for_status()
+        company_name = company_name.replace(":", "_")
         safe_company_name = "".join(
             c for c in company_name if c.isalnum() or c in (" ", "_")
         ).rstrip()

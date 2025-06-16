@@ -31,7 +31,7 @@ def send_report_to_telegram(
         f"{summary_data}\n\n"
         f"[View Full Report]({file_path})"
     )
-
+    logging.info(f"Caption: {caption}")
     # --- Prepare the API request ---
     api_url = f"https://api.telegram.org/bot{token}/sendDocument"
     payload = {"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"}
@@ -70,9 +70,10 @@ def send_report_to_telegram(
 
 if __name__ == "__main__":
     config = get_settings()
+    caption = """['PFE Investment Analysis Summary\nRecommendation: BUY\nEntry Range: $23.00 - $26.00\nPrice Target (12-Month Exit): $38.00\nThesis in Brief:']"""
     send_report_to_telegram(
         "Example Company",
-        "Summary Data",
+        caption,
         r"C:\Python Projects\IBKRBot\debug_main_error.png",
         config.telegram_token,
         config.telegram_chat_id,

@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Dict, Any
+from typing import Any
 
 # --- Google API Imports ---
 from google.oauth2.credentials import Credentials
@@ -67,7 +67,7 @@ def move_file_to_folder(service: Resource, doc_id: str, folder_id: str) -> bool:
     logging.info(f"Attempting to move doc ID: {doc_id} to folder ID: {folder_id}...")
     try:
         # Retrieve the file to get its original parents
-        file: Dict[str, Any] = service.files().get(fileId=doc_id, fields='parents').execute()
+        file: dict[str, Any] = service.files().get(fileId=doc_id, fields='parents').execute()
         # Use .get(key, []) for safety in case 'parents' key is missing
         previous_parents = ",".join(file.get('parents', []))
         
@@ -98,7 +98,7 @@ def share_google_doc_publicly(service: Resource, doc_id: str) -> bool:
     """
     logging.info(f"Attempting to set public read permissions for doc ID: {doc_id}...")
     try:
-        permission: Dict[str, str] = {'type': 'anyone', 'role': 'reader'}
+        permission: dict[str, str] = {'type': 'anyone', 'role': 'reader'}
         service.permissions().create(fileId=doc_id, body=permission, fields='id').execute()
         
         logging.info("✅ Permissions updated successfully. Anyone with the link can now view.")

@@ -28,7 +28,7 @@ def setup_logging():
 
     # --- File Handler ---
     # This handler writes DEBUG and higher messages to a file
-    file_handler = logging.FileHandler(log_filename, mode='a') # 'a' for append
+    file_handler = logging.FileHandler(log_filename, mode='a', encoding='utf-8') # 'a' for append
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(log_format)
     logger.addHandler(file_handler)
