@@ -1,3 +1,5 @@
+from datetime import datetime
+import logging
 import sys
 import time
 import os
@@ -20,7 +22,13 @@ from selenium.common.exceptions import (
 )
 from selenium.webdriver.common.keys import Keys
 from genai.config import Settings, get_settings
-from genai.google_api_helpers import get_doc_id_from_url, move_file_to_folder, share_google_doc_publicly
+from genai.google_api_helpers import (
+    get_doc_id_from_url,
+    get_drive_service,
+    move_file_to_folder,
+    share_google_doc_publicly,
+)
+from genai.logging_config import setup_logging
 from genai.notifications import send_report_to_telegram
 from genai.prompt_text import PROMPT_TEXT, PROMPT_TEXT_2, PROMPT_TEXT_3, PROMPT_TEXT_4
 
@@ -63,36 +71,36 @@ def initialize_driver(
         driver = webdriver.Chrome(service=service, options=chrome_options)
     else:
         driver = webdriver.Chrome(options=chrome_options)
-    print("WebDriver initialized.")
+    logging.info("WebDriver initialized.")
     return driver
 
 
 def navigate_to_url(driver: WebDriver, url: str):
     """Navigates to the specified URL."""
-    print(f"Navigating to {url}...")
+    logging.info(f"Navigating to {url}...")
     driver.get(url)
     try:
         WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, PROMPT_TEXTAREA_CSS))
         )
-        print("Page loaded.")
+        logging.info("Page loaded.")
     except TimeoutException:
-        print("Timeout waiting for page to load initial elements.")
+        logging.exception("Timeout waiting for page to load initial elements.")
         raise
 
 
 def enter_text_without_submitting(driver: WebDriver, prompt: str):
     """Enters text into the prompt textarea WITHOUT submitting with RETURN."""
-    print("Copying prompt to clipboard...")
+    logging.info("Copying prompt to clipboard...")
     pyperclip.copy(prompt)
-    print("Locating prompt textarea...")
+    logging.info("Locating prompt textarea...")
     prompt_textarea = WebDriverWait(driver, 30).until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, PROMPT_TEXTAREA_CSS))
     )
     prompt_textarea.clear()
     prompt_textarea.send_keys(Keys.CONTROL, "v")
     time.sleep(1)
-    print("Text entered.")
+    logging.info("Text entered.")
 
 
 def enter_prompt_and_submit(driver: WebDriver, prompt: str):
@@ -101,32 +109,32 @@ def enter_prompt_and_submit(driver: WebDriver, prompt: str):
     try:
         prompt_textarea = driver.find_element(By.CSS_SELECTOR, PROMPT_TEXTAREA_CSS)
         prompt_textarea.send_keys(Keys.RETURN)
-        print("Prompt submitted.")
+        logging.info("Prompt submitted.")
     except StaleElementReferenceException:
-        print("Prompt textarea became stale. Re-finding and submitting.")
+        logging.info("Prompt textarea became stale. Re-finding and submitting.")
         prompt_textarea = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, PROMPT_TEXTAREA_CSS))
         )
         prompt_textarea.send_keys(Keys.RETURN)
-        print("Prompt submitted after re-finding.")
+        logging.info("Prompt submitted after re-finding.")
 
 
 def perform_deep_research(driver: WebDriver, prompt: str):
     """Corrected function to handle the Deep Research workflow."""
     try:
-        print("Locating and clicking Deep Research button...")
+        logging.info("Locating and clicking Deep Research button...")
         WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.XPATH, DEEP_RESEARCH_BUTTON_XPATH))
         ).click()
         time.sleep(1)
         enter_prompt_and_submit(driver, prompt)
-        print("Prompt text entered. Locating and clicking Start Research button...")
-        WebDriverWait(driver, 300).until(
-            EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
-        ).click()
-        print("Deep Research initiated.")
+        logging.info("Prompt text entered. Locating and clicking Start Research button...")
+        # WebDriverWait(driver, 300).until(
+        #     EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
+        # ).click() # diisable this to save research report during debugging
+        logging.info("Deep Research initiated.")
     except Exception as e:
-        print(f"An error occurred during Deep Research initiation: {e}")
+        logging.exception(f"An error occurred during Deep Research initiation: {e}")
         driver.save_screenshot("debug_deep_research_error.png")
         raise
 
@@ -136,7 +144,7 @@ def get_response(
 ):
     """Waits for a new AI response and parses it as either JSON or a list."""
     try:
-        print(
+        logging.info(
             f"Waiting for new response (currently {responses_before_prompt} on page)..."
         )
         WebDriverWait(driver, 600).until(
@@ -146,13 +154,13 @@ def get_response(
         latest_response_element = driver.find_elements(
             By.CSS_SELECTOR, RESPONSE_CONTENT_CSS
         )[-1]
-        print("Waiting for response to finish generating...")
+        logging.info("Waiting for response to finish generating...")
         WebDriverWait(latest_response_element, 900).until(
             EC.invisibility_of_element_located(
                 (By.CSS_SELECTOR, GENERATING_INDICATOR_CSS)
             )
         )
-        print("Response finished generating.")
+        logging.info("Response finished generating.")
         time.sleep(1)
         raw_text = latest_response_element.text
         if not raw_text:
@@ -163,13 +171,13 @@ def get_response(
         else:
             return [item.strip() for item in raw_text.split(",") if item.strip()]
     except Exception as e:
-        print(f"An error occurred in get_response: {e}")
+        logging.exception(f"An error occurred in get_response: {e}")
         return None
 
 
 def export_and_get_doc_url(driver: WebDriver, current_tab_handle: str) -> str | None:
     """Exports the report to Google Docs and returns the new document's URL."""
-    print("Exporting report to Google Docs...")
+    logging.info("Exporting report to Google Docs...")
     try:
         initial_handles = set(driver.window_handles)
         WebDriverWait(driver, 20).until(
@@ -185,15 +193,15 @@ def export_and_get_doc_url(driver: WebDriver, current_tab_handle: str) -> str | 
         )
         driver.switch_to.window(new_handle)
         while driver.current_url == "about:blank":
-            print("Waiting for export to complete...")
+            logging.info("Waiting for export to complete...")
             time.sleep(5)
         doc_url = driver.current_url
-        print(f"Successfully exported. Doc URL: {doc_url}")
+        logging.info(f"Successfully exported. Doc URL: {doc_url}")
         driver.close()
         driver.switch_to.window(current_tab_handle)
         return doc_url
     except Exception as e:
-        print(f"An error occurred during report export: {e}")
+        logging.exception(f"An error occurred during report export: {e}")
         driver.switch_to.window(current_tab_handle)
         return None
 
@@ -202,7 +210,7 @@ def download_google_doc_as_pdf(
     doc_url: str, download_folder: str, company_name: str
 ) -> str | None:
     """Downloads a Google Doc as a PDF using a direct export link."""
-    print(f"Downloading Google Doc as PDF for {company_name}...")
+    logging.info(f"Downloading Google Doc as PDF for {company_name}...")
     try:
         base_url = doc_url.split("/edit")[0]
 
@@ -213,22 +221,22 @@ def download_google_doc_as_pdf(
         safe_company_name = "".join(
             c for c in company_name if c.isalnum() or c in (" ", "_")
         ).rstrip()
-        file_path = os.path.join(download_folder, f"{safe_company_name} Report.pdf")
+        file_path = os.path.join(download_folder, f"{safe_company_name} Report {datetime.now().strftime('%Y%m%d%H%M%S')}.pdf")
         with open(file_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
-        print(f"Successfully downloaded report to: {file_path}")
+        logging.info(f"Successfully downloaded report to: {file_path}")
         return file_path
     except requests.exceptions.RequestException as e:
-        print(f"Failed to download file from Google Docs: {e}")
+        logging.exception(f"Failed to download file from Google Docs: {e}")
         return None
 
 
 def main():
     """Main function to orchestrate the Gemini Deep Research automation."""
-    driver: WebDriver | None = None
+    setup_logging()
     config = get_settings()
-
+    service = get_drive_service()
     try:
         os.makedirs(config.download_dir, exist_ok=True)
 
@@ -245,7 +253,7 @@ def main():
         WebDriverWait(driver, 1200).until(
             EC.element_to_be_clickable((By.XPATH, SHARE_EXPORT_BUTTON_XPATH))
         )
-        print("Initial research complete. Asking for company list...")
+        logging.info("Initial research complete. Asking for company list...")
 
         responses_before = len(
             driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
@@ -254,16 +262,16 @@ def main():
         company_list = get_response(driver, responses_before, is_json=False)
 
         if not company_list:
-            print("Could not retrieve company list. Exiting.")
+            logging.error("Could not retrieve company list. Exiting.")
             return
 
         research_tabs = {}
-        print("\n--- Starting All Company-Specific Deep Research Tasks ---")
+        logging.info("\n--- Starting All Company-Specific Deep Research Tasks ---")
         for company in company_list:
             company_name = company.strip()
             if not company_name:
                 continue
-            print(f"\nInitiating research for: {company_name}")
+            logging.info(f"\nInitiating research for: {company_name}")
             driver.switch_to.new_window("tab")
             new_handle = driver.current_window_handle
             research_tabs[new_handle] = {"company": company_name, "status": "pending"}
@@ -273,77 +281,77 @@ def main():
 
         driver.switch_to.window(original_tab)
 
-        print("\n--- All research initiated. Now monitoring for completion. ---")
+        logging.info("\n--- All research initiated. Now monitoring for completion. ---")
         while True:
             pending_tabs = {
                 h: d for h, d in research_tabs.items() if d["status"] == "pending"
             }
             if not pending_tabs:
-                print("\n🎉 All research tasks have been processed!")
+                logging.info("\n🎉 All research tasks have been processed!")
                 break
 
-            print(f"\n-- {len(pending_tabs)} tasks pending. Checking status... --")
+            logging.info(f"\n-- {len(pending_tabs)} tasks pending. Checking status... --")
             for handle, data in pending_tabs.items():
                 pdf_path = None
                 try:
                     driver.switch_to.window(handle)
                     if driver.find_elements(By.XPATH, SHARE_EXPORT_BUTTON_XPATH):
-                        print(
+                        logging.info(
                             f"✅ Research for '{data['company']}' is COMPLETE. Starting processing..."
                         )
-
+                        summary_data = None
+                        res_before_summary = len(
+                            driver.find_elements(
+                                By.CSS_SELECTOR, RESPONSE_CONTENT_CSS
+                            )
+                        )
+                        enter_prompt_and_submit(driver, PROMPT_TEXT_4)
+                        summary_data = get_response(
+                            driver, res_before_summary, is_json=False
+                        )
                         doc_url = export_and_get_doc_url(driver, handle)
                         if doc_url:
                             doc_id = get_doc_id_from_url(doc_url)
-                            move_file_to_folder(doc_id, config.folder_id)
-                            share_google_doc_publicly(doc_id)
+                            move_file_to_folder(service, doc_id, config.folder_id)
+                            share_google_doc_publicly(service, doc_id)
                             pdf_path = download_google_doc_as_pdf(
                                 doc_url, config.download_dir, data["company"]
                             )
-
-                        summary_data = None
-                        if pdf_path:
-                            res_before_summary = len(
-                                driver.find_elements(
-                                    By.CSS_SELECTOR, RESPONSE_CONTENT_CSS
-                                )
-                            )
-                            enter_prompt_and_submit(driver, PROMPT_TEXT_4)
-                            summary_data = get_response(
-                                driver, res_before_summary, is_json=True
-                            )
-
                         if pdf_path and summary_data:
                             send_report_to_telegram(
-                                data["company"], summary_data, pdf_path, config
+                                data["company"],
+                                summary_data,
+                                pdf_path,
+                                config.telegram_token,
+                                config.telegram_chat_id,
                             )
                             research_tabs[handle]["status"] = "processed"
                         else:
-                            print(
+                            logging.error(
                                 f"❌ Failed to process report for {data['company']}. Missing PDF or Summary."
                             )
                             research_tabs[handle]["status"] = "error"
                     else:
-                        print(
+                        logging.info(
                             f"⏳ Research for '{data['company']}' is still in progress..."
                         )
                 except (NoSuchWindowException, StaleElementReferenceException):
-                    print(
+                    logging.exception(
                         f"⚠️ Window issue for '{data['company']}': {e}. Marking as errored."
                     )
                     research_tabs[handle]["status"] = "error"
             time.sleep(MONITORING_INTERVAL_SECONDS)
 
     except Exception as e:
-        print(f"\nAn unexpected error occurred in main: {e}")
+        logging.exception(f"\nAn unexpected error occurred in main: {e}")
         if driver:
             driver.save_screenshot("debug_main_error.png")
     finally:
         if driver:
-            print("\nProcess finished. Browser will close in 60 seconds...")
+            logging.info("\nProcess finished. Browser will close in 60 seconds...")
             time.sleep(60)
             driver.quit()
-            print("WebDriver closed.")
+            logging.info("WebDriver closed.")
 
 
 if __name__ == "__main__":

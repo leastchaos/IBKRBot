@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Dict, Any
 
@@ -31,7 +32,7 @@ def get_drive_service() -> Resource | None:
             try:
                 creds.refresh(Request())
             except Exception as e:
-                print(f"Could not refresh token: {e}. Please re-authenticate.")
+                logging.error(f"Could not refresh token: {e}. Please re-authenticate.")
                 if os.path.exists(TOKEN_PATH):
                     os.remove(TOKEN_PATH)
                 creds = None
@@ -41,8 +42,8 @@ def get_drive_service() -> Resource | None:
                 flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
                 creds = flow.run_local_server(port=0)
             except FileNotFoundError:
-                print(f"❌ FATAL ERROR: Credentials file not found at '{CREDENTIALS_PATH}'.")
-                print("   Please download it from the Google Cloud Console for your OAuth 2.0 Client ID.")
+                logging.error(f"❌ FATAL ERROR: Credentials file not found at '{CREDENTIALS_PATH}'.")
+                logging.error("   Please download it from the Google Cloud Console for your OAuth 2.0 Client ID.")
                 return None
 
         with open(TOKEN_PATH, 'w') as token:
@@ -63,7 +64,7 @@ def move_file_to_folder(service: Resource, doc_id: str, folder_id: str) -> bool:
     Returns:
         True if the file was moved successfully, False otherwise.
     """
-    print(f"Attempting to move doc ID: {doc_id} to folder ID: {folder_id}...")
+    logging.info(f"Attempting to move doc ID: {doc_id} to folder ID: {folder_id}...")
     try:
         # Retrieve the file to get its original parents
         file: Dict[str, Any] = service.files().get(fileId=doc_id, fields='parents').execute()
@@ -77,10 +78,10 @@ def move_file_to_folder(service: Resource, doc_id: str, folder_id: str) -> bool:
             fields='id, parents'
         ).execute()
         
-        print("✅ File moved successfully to the designated reports folder.")
+        logging.info("✅ File moved successfully to the designated reports folder.")
         return True
     except HttpError as error:
-        print(f"❌ An error occurred while moving the file: {error}")
+        logging.exception(f"❌ An error occurred while moving the file: {error}")
         return False
 
 
@@ -95,15 +96,15 @@ def share_google_doc_publicly(service: Resource, doc_id: str) -> bool:
     Returns:
         True if permissions were updated successfully, False otherwise.
     """
-    print(f"Attempting to set public read permissions for doc ID: {doc_id}...")
+    logging.info(f"Attempting to set public read permissions for doc ID: {doc_id}...")
     try:
         permission: Dict[str, str] = {'type': 'anyone', 'role': 'reader'}
         service.permissions().create(fileId=doc_id, body=permission, fields='id').execute()
         
-        print("✅ Permissions updated successfully. Anyone with the link can now view.")
+        logging.info("✅ Permissions updated successfully. Anyone with the link can now view.")
         return True
     except HttpError as error:
-        print(f"❌ An error occurred while setting permissions: {error}")
+        logging.exception(f"❌ An error occurred while setting permissions: {error}")
         return False
 
 
@@ -120,7 +121,7 @@ def get_doc_id_from_url(url: str) -> str | None:
     try:
         return url.split('/d/')[1].split('/')[0]
     except IndexError:
-        print(f"Could not extract Document ID from URL: {url}")
+        logging.exception(f"Could not extract Document ID from URL: {url}")
         return None
 
 
@@ -128,12 +129,12 @@ if __name__ == "__main__":
     # This block demonstrates the new, more robust, and efficient way to use the functions.
     
     # 1. Get the service object ONCE.
-    print("Authenticating and getting Google Drive service...")
+    logging.info("Authenticating and getting Google Drive service...")
     drive_service = get_drive_service()
     
     # 2. Only proceed if authentication was successful.
     if drive_service:
-        print("Authentication successful.")
+        logging.info("Authentication successful.")
         
         # NOTE: You must get your folder ID from your config object.
         # This is just an example.
@@ -143,17 +144,17 @@ if __name__ == "__main__":
 
         test_url = "https://docs.google.com/document/d/1vjMHr4Kn9Ki_eJ2T19SOMADICEo_uVtmY9r08dkFTlo/edit"
         
-        print(f"\nProcessing URL: {test_url}")
+        logging.info(f"\nProcessing URL: {test_url}")
         doc_id = get_doc_id_from_url(test_url)
         
         # 3. Only proceed if the document ID is valid.
         if doc_id:
-            print(f"Extracted Document ID: {doc_id}")
+            logging.info(f"Extracted Document ID: {doc_id}")
             
             # 4. Chain the operations, checking for success at each step.
             if move_file_to_folder(drive_service, doc_id, reports_folder_id):
                 share_google_doc_publicly(drive_service, doc_id)
         else:
-            print("Halting process for this URL because Document ID could not be determined.")
+            logging.warning("Halting process for this URL because Document ID could not be determined.")
     else:
-        print("Halting execution because Google Drive service could not be initialized.")
+        logging.warning("Halting execution because Google Drive service could not be initialized.")

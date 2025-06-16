@@ -1,7 +1,6 @@
 import os
 import requests
-from typing import Dict, Any
-
+import logging
 from genai.config import get_settings
 
 
@@ -20,9 +19,9 @@ def send_report_to_telegram(
     Returns:
         True if the message was sent successfully, False otherwise.
     """
-    print(f"Preparing to send report and summary to Telegram for {company_name}...")
+    logging.info(f"Preparing to send report and summary to Telegram for {company_name}...")
     if not all([token, chat_id]):
-        print(
+        logging.error(
             "Error: Telegram bot token or chat ID is not configured. Skipping notification."
         )
         return False
@@ -40,32 +39,32 @@ def send_report_to_telegram(
     try:
         # Check if the file exists before trying to open it
         if not os.path.exists(file_path):
-            print(f"Error: Document not found at path: {file_path}")
+            logging.error(f"Error: Document not found at path: {file_path}")
             return False
 
         # Open the file in binary read mode and send the request
         with open(file_path, "rb") as document:
             files = {"document": document}
-            print(f"Uploading {os.path.basename(file_path)} to Telegram...")
+            logging.info(f"Uploading {os.path.basename(file_path)} to Telegram...")
 
             response = requests.post(api_url, data=payload, files=files, timeout=60)
 
             # Raise an exception for HTTP error codes (4xx or 5xx)
             response.raise_for_status()
 
-        print("Telegram notification with document sent successfully.")
+        logging.info("Telegram notification with document sent successfully.")
         return True
 
     except requests.exceptions.Timeout:
-        print("Error: The request to Telegram timed out.")
+        logging.exception("Error: The request to Telegram timed out.")
         return False
     except requests.exceptions.RequestException as e:
-        print(
+        logging.exception(
             f"Error: Failed to send Telegram notification. An error occurred with the request: {e}"
         )
         return False
     except Exception as e:
-        print(f"An unexpected error occurred during Telegram sending: {e}")
+        logging.exception(f"An unexpected error occurred during Telegram sending: {e}")
         return False
 
 
