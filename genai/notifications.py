@@ -5,7 +5,7 @@ from genai.config import get_settings
 
 
 def send_report_to_telegram(
-    company_name: str, summary_data: str, file_path: str, token: str, chat_id: str
+    company_name: str, summary_data: str, file_path: str, doc_url: str, token: str, chat_id: str
 ) -> bool:
     """
     Sends a formatted summary caption and a document file to a Telegram group.
@@ -29,7 +29,7 @@ def send_report_to_telegram(
     caption = (
         f"✅ **New Company Analysis: {company_name}**\n\n"
         f"{summary_data}\n\n"
-        f"[View Full Report]({file_path})"
+        f"[View Full Report]({doc_url})"
     )
     logging.info(f"Caption: {caption}")
     # --- Prepare the API request ---
@@ -75,6 +75,7 @@ if __name__ == "__main__":
         "Example Company",
         caption,
         r"C:\Python Projects\IBKRBot\debug_main_error.png",
+        "www.google.com",
         config.telegram_token,
         config.telegram_chat_id,
     )

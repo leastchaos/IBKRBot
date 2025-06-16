@@ -84,5 +84,5 @@ Your analysis should be based solely on publicly available information up to the
 The stock ticker to be analyzed is """
 
 PROMPT_TEXT_4 = """
-From the detailed report above, provide a financial analysis summary with the investment direction, entry range and exit range for a Telegram message.
+From the detailed report above, provide the investment direction, entry range and exit range followed by a thesis for a Telegram caption (DO NOT EXCEED 800 characters).
 """
