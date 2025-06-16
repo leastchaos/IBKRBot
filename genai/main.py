@@ -40,6 +40,8 @@ from genai.prompt_text import PROMPT_TEXT, PROMPT_TEXT_2, PROMPT_TEXT_3, PROMPT_
 # --- Constants ---
 GEMINI_URL = "https://gemini.google.com/app"
 MONITORING_INTERVAL_SECONDS = 15
+MAX_ACTIVE_RESEARCH_JOBS = 2  # New constant for the Gemini limitation
+
 
 # --- Element Locators ---
 PROMPT_TEXTAREA_CSS = ".ql-editor[contenteditable='true']"
@@ -57,7 +59,8 @@ class ResearchJob(TypedDict):
 
     handle: str
     company_name: str
-    status: str  # "pending", "completed", "processed", "error"
+    status: str  # "pending", "active", "completed", "processed", "error"
+    started_at: float  # To track when the job was activated
 
 
 def initialize_driver(
@@ -113,6 +116,7 @@ def enter_text_without_submitting(driver: WebDriver, prompt: str):
     logging.info("Text entered.")
 
 
+@retry_on_exception
 def enter_prompt_and_submit(driver: WebDriver, prompt: str):
     """Enters the prompt and submits it."""
     enter_text_without_submitting(driver, prompt)
@@ -129,6 +133,23 @@ def enter_prompt_and_submit(driver: WebDriver, prompt: str):
         logging.info("Prompt submitted after re-finding.")
 
 
+@retry_on_exception
+def click_start_research(driver: WebDriver):
+    """Clicks the Start Research button."""
+    try:
+        WebDriverWait(driver, 300).until(
+            EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
+        ).click()
+        logging.info("Start Research button clicked.")
+    except StaleElementReferenceException:
+        logging.info("Start Research button became stale. Re-finding and clicking...")
+        WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
+        ).click()
+        logging.info("Start Research button clicked after re-finding.")
+
+
+@retry_on_exception
 def perform_deep_research(driver: WebDriver, prompt: str):
     """Initiates the Deep Research workflow with a given prompt."""
     try:
@@ -141,19 +162,7 @@ def perform_deep_research(driver: WebDriver, prompt: str):
         logging.info(
             "Prompt text entered. Locating and clicking Start Research button..."
         )
-        try:
-            WebDriverWait(driver, 300).until(
-                EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
-            ).click()  # diisable this to save research report during debugging
-            logging.info("Start Research button clicked.")
-        except StaleElementReferenceException:
-            logging.info(
-                "Start Research button became stale. Re-finding and clicking..."
-            )
-            WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
-            ).click()
-            logging.info("Start Research button clicked after re-finding.")
+        click_start_research(driver)
         logging.info("Deep Research initiated.")
     except Exception as e:
         logging.exception(f"An error occurred during Deep Research initiation: {e}")
@@ -161,6 +170,7 @@ def perform_deep_research(driver: WebDriver, prompt: str):
         raise
 
 
+@retry_on_exception
 def get_response(
     driver: WebDriver, responses_before_prompt: int, is_csv: bool = False
 ) -> list[str] | str | None:
@@ -170,7 +180,7 @@ def get_response(
             f"Waiting for new response (currently {responses_before_prompt} on page)..."
         )
         # Wait for a new response element to appear
-        WebDriverWait(driver, 600).until(
+        WebDriverWait(driver, 900).until(
             lambda d: len(d.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS))
             > responses_before_prompt
         )
@@ -285,28 +295,20 @@ def get_initial_company_list(driver: WebDriver) -> List[str]:
     return company_list
 
 
-def launch_research_jobs(
-    driver: WebDriver, companies: list[str]
-) -> dict[str, ResearchJob]:
-    """Opens a new tab for each company and starts the research."""
-    research_jobs = {}
-    logging.info("\n--- Starting All Company-Specific Deep Research Tasks ---")
-    for company in companies:
-        company_name = company.strip()
-        if not company_name:
-            continue
-        logging.info(f"\nInitiating research for: {company_name}")
-        driver.switch_to.new_window("tab")
-        new_handle = driver.current_window_handle
-        research_jobs[new_handle] = {
-            "handle": new_handle,
-            "company_name": company_name,
-            "status": "pending",
-        }
-        navigate_to_url(driver, GEMINI_URL)
-        company_prompt = f"{PROMPT_TEXT_3} {company_name}."
-        perform_deep_research(driver, company_prompt)
-    return research_jobs
+def launch_research_job(driver: WebDriver, company_name: str) -> ResearchJob:
+    """Opens a new tab for a single company and starts the research."""
+    logging.info(f"\nInitiating research for: {company_name}")
+    driver.switch_to.new_window("tab")
+    new_handle = driver.current_window_handle
+    navigate_to_url(driver, GEMINI_URL)
+    company_prompt = f"{PROMPT_TEXT_3} {company_name}."
+    perform_deep_research(driver, company_prompt)
+    return {
+        "handle": new_handle,
+        "company_name": company_name,
+        "status": "active",  # Mark as active immediately
+        "started_at": time.time(),
+    }
 
 
 def process_completed_job(
@@ -356,25 +358,44 @@ def process_completed_job(
 
 
 def monitor_and_process_jobs(
-    driver: WebDriver, jobs: dict[str, ResearchJob], config: Settings, service
+    driver: WebDriver,
+    companies: list[str],
+    config: Settings,
+    service,
+    original_tab_handle: str,
 ):
-    """Monitors all pending jobs and processes them upon completion."""
-    logging.info("\n--- All research initiated. Now monitoring for completion. ---")
+    """Monitors all pending jobs and processes them upon completion, adhering to MAX_ACTIVE_RESEARCH_JOBS."""
+    logging.info(
+        "\n--- Research initiated. Now monitoring and launching new tasks. ---"
+    )
 
-    while any(job["status"] == "pending" for job in jobs.values()):
-        pending_count = sum(1 for job in jobs.values() if job["status"] == "pending")
-        logging.info(f"\n-- {pending_count} tasks pending. Checking status... --")
+    active_jobs: dict[str, ResearchJob] = {}
+    pending_companies = list(companies)  # Create a mutable copy
 
-        for handle, job in list(jobs.items()):
-            if job["status"] != "pending":
-                continue
+    # Initial launch of MAX_ACTIVE_RESEARCH_JOBS
+    for _ in range(min(MAX_ACTIVE_RESEARCH_JOBS, len(pending_companies))):
+        if pending_companies:
+            company_to_launch = pending_companies.pop(0)
+            job = launch_research_job(driver, company_to_launch)
+            active_jobs[job["handle"]] = job
+            driver.switch_to.window(
+                original_tab_handle
+            )  # Switch back to main tab after launching
 
+    while active_jobs or pending_companies:
+        logging.info(
+            f"\n-- Active tasks: {len(active_jobs)}. Pending in queue: {len(pending_companies)}. --"
+        )
+
+        jobs_to_remove = []
+        for handle, job in list(active_jobs.items()):
             try:
                 driver.switch_to.window(handle)
                 # Check if the "Export" button is present, indicating completion
                 if driver.find_elements(By.XPATH, SHARE_EXPORT_BUTTON_XPATH):
                     new_status = process_completed_job(driver, job, config, service)
-                    jobs[handle]["status"] = new_status
+                    active_jobs[handle]["status"] = new_status
+                    jobs_to_remove.append(handle)
                 else:
                     logging.info(
                         f"⏳ Research for '{job['company_name']}' is still in progress..."
@@ -383,11 +404,36 @@ def monitor_and_process_jobs(
                 logging.warning(
                     f"⚠️ Window for '{job['company_name']}' not found or stale. Marking as error. Details: {e}"
                 )
-                jobs[handle]["status"] = "error"
+                active_jobs[handle]["status"] = "error"
+                jobs_to_remove.append(handle)
 
-        time.sleep(MONITORING_INTERVAL_SECONDS)
+        for handle in jobs_to_remove:
+            logging.info(
+                f"Task for '{active_jobs[handle]['company_name']}' completed or errored. Closing tab."
+            )
+            try:
+                driver.switch_to.window(handle)
+                driver.close()
+            except NoSuchWindowException:
+                logging.warning(
+                    f"Window for {active_jobs[handle]['company_name']} already closed."
+                )
+            del active_jobs[handle]
+
+        # Launch new jobs if slots are available and there are pending companies
+        while len(active_jobs) < MAX_ACTIVE_RESEARCH_JOBS and pending_companies:
+            company_to_launch = pending_companies.pop(0)
+            job = launch_research_job(driver, company_to_launch)
+            active_jobs[job["handle"]] = job
+            driver.switch_to.window(
+                original_tab_handle
+            )  # Switch back to main tab after launching
+
+        if active_jobs or pending_companies:  # Only sleep if there's still work to do
+            time.sleep(MONITORING_INTERVAL_SECONDS)
 
     logging.info("\n🎉 All research tasks have been processed!")
+
 
 @retry_on_exception
 def get_last_response(driver: WebDriver) -> str:
@@ -417,10 +463,7 @@ def main():
         if not company_list:
             return
 
-        research_jobs = launch_research_jobs(driver, company_list)
-        driver.switch_to.window(original_tab)  # Switch back to the main tab
-
-        monitor_and_process_jobs(driver, research_jobs, config, service)
+        monitor_and_process_jobs(driver, company_list, config, service, original_tab)
 
     except Exception as e:
         logging.exception(f"\nAn unexpected error occurred in main: {e}")

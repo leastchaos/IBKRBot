@@ -27,7 +27,7 @@ def send_report_to_telegram(
         return False
 
     caption = (
-        f"✅ **New Company Analysis: {company_name}**\n\n"
+        f"**{company_name}**\n\n"
         f"{summary_data}\n\n"
         f"[View Full Report]({doc_url})"
     )
