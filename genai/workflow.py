@@ -6,7 +6,7 @@ import os
 import json
 import pyperclip
 import requests
-from typing import TypedDict, List
+from typing import TypedDict, List, Any
 
 from selenium import webdriver
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -24,17 +24,22 @@ from selenium.common.exceptions import (
 )
 from selenium.webdriver.common.keys import Keys
 
-from genai.config import Settings, get_settings
-from genai.google_api_helpers import (
+from genai.helpers.config import Settings, get_settings
+from genai.helpers.google_api_helpers import (
     get_doc_id_from_url,
     get_drive_service,
     move_file_to_folder,
     share_google_doc_publicly,
 )
-from genai.helpers import retry_on_exception
-from genai.logging_config import setup_logging
-from genai.notifications import send_report_to_telegram
-from genai.prompt_text import PROMPT_TEXT, PROMPT_TEXT_2, PROMPT_TEXT_3, PROMPT_TEXT_4
+from genai.helpers.helpers import retry_on_exception
+from genai.helpers.logging_config import setup_logging
+from genai.helpers.notifications import send_report_to_telegram
+from genai.helpers.prompt_text import (
+    PROMPT_TEXT,
+    PROMPT_TEXT_2,
+    PROMPT_TEXT_3,
+    PROMPT_TEXT_4,
+)
 
 
 # --- Constants ---
@@ -57,10 +62,19 @@ GENERATING_INDICATOR_CSS = "progress.mat-mdc-linear-progress"
 class ResearchJob(TypedDict):
     """A dictionary representing the state of a single research job."""
 
+    task_id: int
     handle: str
     company_name: str
-    status: str  # "pending", "active", "completed", "processed", "error"
-    started_at: float  # To track when the job was activated
+    status: str
+    started_at: float
+
+
+class ProcessingResult(TypedDict, total=False):
+    """A dictionary for the results of post-processing a completed job."""
+
+    report_url: str
+    summary: str
+    error_message: str
 
 
 def initialize_driver(
@@ -311,50 +325,77 @@ def launch_research_job(driver: WebDriver, company_name: str) -> ResearchJob:
     }
 
 
-def process_completed_job(
-    driver: WebDriver, job: ResearchJob, config: Settings, service
-) -> str:
-    """Processes a single completed research job: summarizes, exports, notifies."""
+def process_completed_job(driver: WebDriver, job: ResearchJob, config: Settings, service: Any) -> tuple[str, ProcessingResult]:
+    """
+    Processes a single completed deep dive research job from start to finish.
+    This is a high-level workflow that orchestrates multiple smaller steps.
+
+    Args:
+        driver: The Selenium WebDriver instance, focused on the completed tab.
+        job: The ResearchJob dictionary containing info about the task.
+        config: The main Settings object.
+        service: The authenticated Google Drive API service object.
+
+    Returns:
+        A tuple containing the final status ('completed' or 'error') and a
+        dictionary with the results.
+    """
+    company_name = job['company_name']
+    pdf_path: str | None = None
+    
     try:
-        logging.info(
-            f"✅ Research for '{job['company_name']}' is COMPLETE. Processing..."
-        )
-
-        # 1. Get Summary
-        res_before_summary = len(
-            driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
-        )
+        logging.info(f"✅ Research for '{company_name}' is COMPLETE. Starting post-processing workflow...")
+        
+        # 1. Get AI Summary: Asks Gemini for a formatted summary string.
+        res_before_summary = len(driver.find_elements(By.CSS_SELECTOR, ".response-content"))
         enter_prompt_and_submit(driver, PROMPT_TEXT_4)
-        summary_data = get_response(driver, res_before_summary, is_csv=False)
-        logging.info(f"Summary for '{job['company_name']}': {summary_data}")
-        # 2. Export and manage Google Doc
+        summary_text = get_response(driver, res_before_summary, is_csv=False)
+        logging.info(f"Summary for '{company_name}': {summary_text}")
+
+        # 2. Export to Google Docs: Gets the URL of the full report.
         doc_url = export_and_get_doc_url(driver, job["handle"])
-        if not doc_url or not summary_data:
-            logging.error(
-                f"❌ Failed to get Doc URL or Summary for {job['company_name']}."
-            )
-            return "error"
+        
+        if not doc_url or not isinstance(summary_text, str):
+            raise ValueError("Failed to get a valid Doc URL or Summary string from Gemini.")
 
+        # 3. Manage Google Drive File: Sets permissions and moves the file using the API.
         doc_id = get_doc_id_from_url(doc_url)
-        move_file_to_folder(service, doc_id, config.folder_id)
-        share_google_doc_publicly(service, doc_id)
-        doc_path = download_google_doc_as_pdf(
-            doc_url, config.download_dir, job["company_name"]
-        )
+        if doc_id and config.drive:
+            if config.drive.folder_id:
+                move_file_to_folder(service, doc_id, config.drive.folder_id)
+            share_google_doc_publicly(service, doc_id)
+        
+        # 4. Download PDF Version: Downloads a local copy of the report for sending.
+        if config.chrome and config.chrome.download_dir:
+            pdf_path = download_google_doc_as_pdf(doc_url, config.chrome.download_dir, company_name)
+            if not pdf_path:
+                raise ValueError("Failed to download the report as a PDF.")
+        else:
+             logging.warning("Download directory not configured. Skipping PDF download.")
 
-        # 3. Send notification
-        send_report_to_telegram(
-            job["company_name"],
-            summary_data,
-            doc_path,
-            doc_url,
-            config.telegram_token,
-            config.telegram_chat_id,
-        )
-        return "processed"
+        # 5. Send Telegram Notification: Sends the summary and attaches the PDF file.
+        if pdf_path and config.telegram:
+            send_report_to_telegram(
+                company_name=company_name,
+                summary_text=summary_text,
+                file_path=pdf_path,
+                doc_url=doc_url,
+                config=config.telegram
+            )
+
+        final_results: ProcessingResult = {"report_url": doc_url, "summary": summary_text}
+        return "completed", final_results
+
     except Exception as e:
-        logging.exception(f"❌ Error processing job for '{job['company_name']}': {e}")
-        return "error"
+        logging.error(f"❌ Error during post-processing for '{company_name}'.", exc_info=True)
+        final_results: ProcessingResult = {"error_message": str(e)}
+        return "error", final_results
+    
+    finally:
+        # 6. Cleanup: Always deletes the local PDF file to save space.
+        if pdf_path and os.path.exists(pdf_path):
+            logging.info(f"Cleaning up downloaded file: {pdf_path}")
+            os.remove(pdf_path)
 
 
 def monitor_and_process_jobs(
@@ -452,10 +493,10 @@ def main():
 
     try:
         driver = initialize_driver(
-            config.user_data_dir,
-            config.profile_directory,
-            config.chrome_driver_path,
-            config.download_dir,
+            config.chrome.user_data_dir,
+            config.chrome.profile_directory,
+            config.chrome.chrome_driver_path,
+            config.chrome.download_dir,
         )
         original_tab = driver.current_window_handle
 
@@ -487,10 +528,10 @@ if __name__ == "__main__":
 
         try:
             driver = initialize_driver(
-                config.user_data_dir,
-                config.profile_directory,
-                config.chrome_driver_path,
-                config.download_dir,
+                config.chrome.user_data_dir,
+                config.chrome.profile_directory,
+                config.chrome.chrome_driver_path,
+                config.chrome.download_dir,
             )
             driver.get("https://gemini.google.com/app/a95bfed43b54ef04")
             input("Press Enter to continue...")
@@ -502,8 +543,8 @@ if __name__ == "__main__":
                 summary,
                 r"C:\Python Projects\IBKRBot\debug_main_error.png",
                 "www.google.com",
-                config.telegram_token,
-                config.telegram_chat_id,
+                config.telegram.token,
+                config.telegram.chat_id,
             )
 
         except Exception as e:

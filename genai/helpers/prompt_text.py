@@ -86,3 +86,36 @@ The stock ticker to be analyzed is """
 PROMPT_TEXT_4 = """
 From the detailed report above, provide the current price of the ticker, investment direction, entry range and exit range followed by a thesis for a Telegram caption (DO NOT EXCEED 800 characters).
 """
+
+PROMPT_TEXT_5 = """
+You are a tactical execution analyst. Your task is to evaluate a pre-approved stock to determine if today is an opportune moment to initiate a position within the established buy range. Your analysis must be swift, data-driven, and focused on short-term technicals and news flow.
+//-- CONTEXT FROM STRATEGIC ANALYSIS --//
+Stock Ticker: {TICKER}
+Strategic Buy Range: {e.g., "$50.00 - $55.00"}
+Strategic Price Target: {e.g., "$75.00"}
+Core Thesis Summary: {e.g., "Undervalued due to recent sector downturn, not company-specific issues. Upcoming product launch in Q3 is a major catalyst. Strong moat in their intellectual property."}
+//-- DAILY TACTICAL ANALYSIS PROTOCOL --//
+1. **Price & Range Check:**
+* Confirm the current price is within the `Strategic Buy Range`. If it is not, state this and conclude the analysis.
+2. **Material News Scan:**
+* Briefly scan for any significant company-specific news released in the last 24-48 hours (e.g., earnings pre-announcements, SEC filings, analyst upgrades/downgrades, press releases).
+* State if any news fundamentally challenges the `Core Thesis Summary`.
+3. **Short-Term Technical Assessment:**
+* **Support/Resistance:** Identify the nearest key short-term support and resistance levels. Is the stock approaching, bouncing from, or breaking through a support level?
+* **Momentum Indicators:** Analyze the daily Relative Strength Index (RSI). Is it in oversold territory (<30), neutral, or overbought (>70)? Analyze the MACD. Is there a recent or imminent bullish/bearish crossover?
+* **Volume Analysis:** Is the recent price movement (if any) accompanied by high or low volume? A bounce on high volume is more significant than one on low volume.
+* **Candlestick Patterns (Optional):** Note any significant daily candlestick patterns that suggest reversal or confirmation (e.g., Hammer, Doji, Bullish Engulfing at a support level).
+4. **Market & Sector Context:**
+* Briefly describe the day's general market sentiment (e.g., S&P 500 performance) and the performance of the stock's specific sector ETF (e.g., XLK for Tech, XLE for Energy). Is the stock moving with or against its sector/market?
+//-- REQUIRED OUTPUT & RECOMMENDATION --//
+Structure your response as follows:
+**Ticker:** {TICKER}
+**Current Price:** {$XX.XX}
+**Status:** (e.g., Within Buy Range / Below Buy Range / Above Buy Range)
+**Tactical Recommendation:** (Choose ONE and provide a 1-2 sentence justification)
+* **HOLD OFF:** "Conditions are not yet favorable for entry. The stock is still in a downtrend with no signs of stabilization."
+* **MONITOR FOR ENTRY:** "The stock is entering the lower part of the buy range. Look for a bounce off the $XX support level or an RSI move above 30 before entering."
+* **INITIATE PARTIAL POSITION:** "Conditions are improving. The stock has stabilized at support on increased volume. Consider a 1/3 or 1/2 position here to secure a cost basis, with plans to add more on further strength."
+* **EXECUTE FULL POSITION:** "Multiple indicators confirm a strong entry point. The stock shows a clear reversal at major support, confirmed by a bullish catalyst/market strength. The risk/reward is highly favorable for a full entry within the buy range."
+**Key Justification:** (e.g., "Price is currently $51.20, in the lower half of the buy range. It is finding support at the 50-day moving average, and the RSI is moving out of oversold territory. However, market sentiment is weak today. Recommend initiating a partial position and monitoring for a close above $52.00.")
+The stock to be analyzed is """
