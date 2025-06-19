@@ -1,74 +1,78 @@
-# config.py
-
-from dataclasses import dataclass, fields
+import logging
 import os
 import json
-from typing import Any, Optional
+from dataclasses import dataclass
 
+# The path to your configuration file
 CONFIG_PATH = os.path.join(os.getcwd(), "credentials", "genai_config.json")
+
 
 @dataclass(frozen=True)
 class ChromeSettings:
+    """Configuration specific to the Selenium Chrome driver."""
     user_data_dir: str
     profile_directory: str
-    chrome_driver_path: Optional[str] = None
-    download_dir: Optional[str] = None
+    chrome_driver_path: str | None = None
+    download_dir: str | None = None
+
 
 @dataclass(frozen=True)
 class TelegramSettings:
+    """Configuration for Telegram notifications."""
     token: str
     chat_id: str
 
+
 @dataclass(frozen=True)
 class DriveSettings:
-    folder_id: Optional[str] = None
+    """Configuration for Google Drive integration."""
+    folder_id: str | None = None
+
 
 @dataclass(frozen=True)
 class Settings:
+    """The main, top-level configuration class."""
     chrome: ChromeSettings
-    telegram: Optional[TelegramSettings]
-    drive: Optional[DriveSettings]
+    telegram: TelegramSettings
+    drive: DriveSettings
 
     @classmethod
     def from_file(cls, path: str = CONFIG_PATH) -> "Settings":
         """
-        Loads settings from a nested JSON file, applying defaults for any missing keys.
+        Loads settings from a nested JSON file, applying defaults and
+        enforcing that required sections exist.
         """
         try:
             with open(path, "r") as f:
                 user_config = json.load(f)
         except FileNotFoundError:
-            user_config = {}
-            print(f"Warning: Config file not found at {path}. Using default settings.")
+            logging.error(f"FATAL: Configuration file not found at {path}. The application cannot start.")
+            raise
+
+        # Check for all required top-level keys in the JSON
+        required_sections = ["chrome", "telegram", "drive"]
+        for section in required_sections:
+            if section not in user_config:
+                logging.error(f"FATAL: Missing required section '{section}' in config file.")
+                raise ValueError(f"Missing required section '{section}' in {path}")
 
         # --- Process Chrome Settings ---
         user_chrome_settings = user_config.get("chrome", {})
+        
+        # Define the default path directly for a Windows environment.
         default_chrome_settings = {
             "user_data_dir": os.path.join(os.path.expanduser("~"), "AppData", "Local", "Google", "Chrome", "User Data"),
             "profile_directory": "Default",
             "chrome_driver_path": None,
             "download_dir": os.path.join(os.getcwd(), "downloads")
         }
-        # User settings override defaults
+        # User-provided settings will override the defaults
         final_chrome_config = default_chrome_settings | user_chrome_settings
         chrome_settings = ChromeSettings(**final_chrome_config)
 
-
-        # --- Process Telegram Settings ---
-        telegram_settings = None
-        user_telegram_settings = user_config.get("telegram")
-        if user_telegram_settings and "token" in user_telegram_settings and "chat_id" in user_telegram_settings:
-            telegram_settings = TelegramSettings(**user_telegram_settings)
-        else:
-            print("Warning: Telegram configuration not found or incomplete. Telegram features will be disabled.")
-
-
-        # --- Process Drive Settings ---
-        drive_settings = None
-        user_drive_settings = user_config.get("drive")
-        if user_drive_settings:
-            drive_settings = DriveSettings(**user_drive_settings)
-
+        # --- Process mandatory settings ---
+        telegram_settings = TelegramSettings(**user_config["telegram"])
+        drive_settings = DriveSettings(**user_config["drive"])
 
         # --- Compose the final Settings object ---
         return cls(
@@ -77,16 +81,21 @@ class Settings:
             drive=drive_settings
         )
 
-# Maintain this function for compatibility with your other scripts
+
 def get_settings() -> Settings:
-    """Convenience function to load settings using the class method."""
+    """A simple convenience function to load the application settings."""
     return Settings.from_file()
 
+
 if __name__ == "__main__":
-    # This test will now correctly load and print your settings
-    settings = get_settings()
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     
-    print("--- Loaded Settings ---")
-    print(f"Chrome Settings : {settings.chrome}")
-    print(f"Telegram Settings : {settings.telegram}")
-    print(f"Drive Settings : {settings.drive}")
+    try:
+        settings = get_settings()
+        print("\n--- ✅ Configuration Loaded Successfully ---")
+        print(f"Chrome Settings : {settings.chrome}")
+        print(f"Telegram Settings : {settings.telegram}")
+        print(f"Drive Settings : {settings.drive}")
+    except (FileNotFoundError, ValueError, TypeError) as e:
+        print(f"\n--- ❌ Failed to load configuration ---")
+        print(e)
