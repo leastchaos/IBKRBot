@@ -109,15 +109,38 @@ def navigate_to_url(driver: WebDriver, url: str = GEMINI_URL) -> None:
 
 def enter_text(driver: WebDriver, prompt: str) -> None:
     """Enters text into the prompt textarea WITHOUT submitting with RETURN."""
-    logging.info("Copying prompt to clipboard and pasting...")
-    pyperclip.copy(prompt)
-    prompt_textarea = WebDriverWait(driver, 30).until(
-        EC.element_to_be_clickable((By.CSS_SELECTOR, PROMPT_TEXTAREA_CSS))
-    )
-    prompt_textarea.clear()
-    prompt_textarea.send_keys(Keys.CONTROL, "v")
-    time.sleep(1)
-    logging.info("Text entered.")
+    logging.info("Injecting prompt text directly via JavaScript...")
+    try:
+        # 1. Find the target element as before.
+        prompt_textarea = WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, PROMPT_TEXTAREA_CSS))
+        )
+
+        # 2. Define the JavaScript to execute.
+        # It sets the element's text content and then dispatches 'input' and 'change' events
+        # to ensure the web application (Gemini) recognizes the new text.
+        js_script = """
+            var element = arguments[0];
+            var text = arguments[1];
+            
+            // For contenteditable divs, setting textContent is a reliable method.
+            element.textContent = text;
+            
+            // Dispatch events to simulate user input and trigger any JS listeners on the page.
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+        """
+
+        # 3. Execute the script with the element and prompt as arguments.
+        driver.execute_script(js_script, prompt_textarea, prompt)
+
+        time.sleep(1)  # A small pause for the page to react.
+        logging.info("Text entered successfully using JavaScript.")
+    except Exception:
+        logging.error(
+            "Failed to enter text into prompt textarea using JavaScript.", exc_info=True
+        )
+        raise
 
 
 def enter_prompt_and_submit(driver: WebDriver, prompt: str) -> None:
@@ -384,33 +407,19 @@ if __name__ == "__main__":
     service = get_drive_service()
     driver = None
 
-    try:
-        driver = initialize_driver(
-            config.chrome.user_data_dir,
-            config.chrome.profile_directory,
-            config.chrome.chrome_driver_path,
-            config.chrome.download_dir,
-        )
-        driver.get("https://gemini.google.com/app/a95bfed43b54ef04")
-        input("Press Enter to continue...")
-        summary = get_last_response(driver)
-        logging.info(f"Summary: {summary}")
-        doc_path = r"C:\Python Projects\IBKRBot\debug_main_error.png"
-        send_report_to_telegram(
-            "Example Company",
-            summary,
-            r"C:\Python Projects\IBKRBot\debug_main_error.png",
-            "www.google.com",
-            config.telegram,
-        )
-
-    except Exception as e:
-        logging.exception(f"\nAn unexpected error occurred in main: {e}")
-        if driver:
-            driver.save_screenshot("debug_main_error.png")
-    finally:
-        if driver:
-            logging.info("\nProcess finished. Browser will close in 60 seconds...")
-            time.sleep(60)
-            driver.quit()
-            logging.info("WebDriver closed.")
+    driver = initialize_driver(
+        config.chrome.user_data_dir,
+        config.chrome.profile_directory,
+        config.chrome.chrome_driver_path,
+        config.chrome.download_dir,
+    )
+    driver.get("https://gemini.google.com/app/a95bfed43b54ef04")
+    input("Press Enter to continue...")
+    process_completed_job(driver, {
+        "task_id": 1,
+        "handle": driver.current_window_handle,
+        "company_name": "Example Company",
+        "status": "processing",
+        "started_at": time.time(),
+        "requested_by": "telegram:123456789"
+    }, config, service)

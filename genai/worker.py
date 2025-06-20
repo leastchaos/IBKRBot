@@ -11,7 +11,12 @@ from genai.constants import (
     RESPONSE_CONTENT_CSS,
     SHARE_EXPORT_BUTTON_XPATH,
 )
-from genai.helpers.prompt_text import PROMPT_TEXT, PROMPT_TEXT_2, PROMPT_TEXT_3
+from genai.helpers.prompt_text import (
+    PROMPT_TEXT,
+    PROMPT_TEXT_2,
+    PROMPT_TEXT_3,
+    PROMPT_TEXT_5,
+)
 from genai.helpers.logging_config import setup_logging
 from genai.workflow import (
     initialize_driver,
@@ -177,6 +182,34 @@ def handle_deep_dive_task(
     return new_job_details
 
 
+def launch_browser_research_task(
+    driver: WebDriver,
+    task_id: int,
+    company_name: str,
+    requested_by: str | None,
+    prompt_template: str,  # <-- NEW: Accepts a prompt template
+) -> None:
+    """
+    Launches a research task in a new tab using a specified prompt.
+    """
+    logging.info(f"Launching research for task ID: {task_id}, Company: {company_name}")
+    driver.switch_to.new_window("tab")
+    new_handle: str = driver.current_window_handle
+    navigate_to_url(driver)
+    # Use the provided prompt template
+    prompt = f"{prompt_template} {company_name}."
+    perform_deep_research(driver, prompt)
+    new_job_details: ResearchJob = {
+        "task_id": task_id,
+        "handle": new_handle,
+        "company_name": company_name,
+        "status": "processing",
+        "started_at": time.time(),
+        "requested_by": requested_by,  # Ensure we keep track of who requested it
+    }
+    return new_job_details
+
+
 # --- Main Worker Logic ---
 def main() -> None:
     """The main worker loop that processes tasks from the queue based on their type."""
@@ -201,9 +234,7 @@ def main() -> None:
             for task_id, job in list(active_jobs.items()):
                 try:
                     driver.switch_to.window(job["handle"])
-                    if driver.find_elements(
-                        By.XPATH,
-                    ):
+                    if driver.find_elements(By.XPATH, SHARE_EXPORT_BUTTON_XPATH):
 
                         # The call to the imported function
                         final_status, results = process_completed_job(
@@ -270,15 +301,29 @@ def main() -> None:
                             driver.switch_to.window(original_tab)
                             handle_screener_task(driver, task_id, conn)
 
-                        elif task_type == "company_deep_dive":
-                            new_job = handle_deep_dive_task(
-                                driver, task_id, company_name, requested_by
-                            )
-                            active_jobs[task_id] = (
-                                new_job  # The main loop manages the state
-                            )
-                            driver.switch_to.window(original_tab)
+                        elif task_type in ["company_deep_dive", "daily_monitor"]:
+                            # Select the correct prompt based on the task type
+                            if task_type == "daily_monitor":
+                                prompt_template = PROMPT_TEXT_5
+                                logging.info(
+                                    f"Dispatching task {task_id} with DAILY MONITOR prompt."
+                                )
+                            else:  # company_deep_dive
+                                prompt_template = PROMPT_TEXT_3
+                                logging.info(
+                                    f"Dispatching task {task_id} with DEEP DIVE prompt."
+                                )
 
+                            # Call the generic launch function
+                            new_job_details = launch_browser_research_task(
+                                driver,
+                                task_id,
+                                company_name,
+                                requested_by,
+                                prompt_template,
+                            )
+                            active_jobs[task_id] = new_job_details
+                            driver.switch_to.window(original_tab)
             logging.info(
                 f"Monitoring... {len(active_jobs)} active deep dives. Sleeping for {MONITORING_INTERVAL_SECONDS}s."
             )
