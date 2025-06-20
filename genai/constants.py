@@ -17,3 +17,12 @@ GDRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 CREDENTIALS_DIR = os.path.join(os.getcwd(), "credentials")
 GDRIVE_TOKEN_PATH = os.path.join(CREDENTIALS_DIR, "token.json")
 GDRIVE_CREDENTIALS_PATH = os.path.join(CREDENTIALS_DIR, "credentials.json")
+
+# --- CSS Selectors ---
+PROMPT_TEXTAREA_CSS = ".ql-editor[contenteditable='true']"
+DEEP_RESEARCH_BUTTON_XPATH = "//button[contains(., 'Deep Research')]"
+START_RESEARCH_BUTTON_XPATH = "//button[contains(., 'Start research')]"
+SHARE_EXPORT_BUTTON_XPATH = "//button[contains(., 'Export')]"
+EXPORT_TO_DOCS_BUTTON_XPATH = "//button[contains(., 'Export to Docs')]"
+RESPONSE_CONTENT_CSS = "div.response-content"
+GENERATING_INDICATOR_CSS = "progress.mat-mdc-linear-progress"

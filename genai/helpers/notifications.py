@@ -1,74 +1,91 @@
 import os
 import requests
 import logging
-from genai.helpers.config import get_settings
+
+from genai.helpers.config import TelegramSettings
+
+
+def _send_single_telegram_document(
+    chat_id: str, caption: str, file_path: str, config: TelegramSettings
+) -> bool:
+    """Private helper to send a document to a single chat ID."""
+    api_url = f"https://api.telegram.org/bot{config.token}/sendDocument"
+    try:
+        with open(file_path, "rb") as document:
+            payload = {"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"}
+            files = {"document": document}
+
+            logging.info(f"Uploading report to chat ID: {chat_id}...")
+            response = requests.post(api_url, data=payload, files=files, timeout=60)
+            response.raise_for_status()
+        return True
+    except requests.exceptions.RequestException as e:
+        logging.error(
+            f"Failed to send Telegram document to chat_id {chat_id}.", exc_info=True
+        )
+        return False
 
 
 def send_report_to_telegram(
-    company_name: str, summary_text: str, file_path: str, doc_url: str, token: str, chat_id: str
+    company_name: str,
+    summary_text: str,
+    file_path: str,
+    doc_url: str,
+    config: TelegramSettings,
+    target_chat_id: str | None = None,
 ) -> bool:
     """
-    Sends a formatted summary caption and a document file to a Telegram group.
-
-    Args:
-        company_name: The name of the company for the report.
-        summary_data: The summary data to be included in the caption.
-        file_path: The local path to the document (e.g., PDF) to be sent.
-        config: The configuration object containing Telegram settings.
-
-    Returns:
-        True if the message was sent successfully, False otherwise.
+    Sends a report to the default chat ID and an optional target chat ID, avoiding duplicates.
     """
-    logging.info(f"Preparing to send report and summary to Telegram for {company_name}...")
-    if not all([token, chat_id]):
+    logging.info(f"Preparing to send report for {company_name}...")
+    if not config or not config.token or not config.chat_id:
         logging.error(
-            "Error: Telegram bot token or chat ID is not configured. Skipping notification."
+            "Default Telegram configuration is missing. Cannot send notifications."
         )
         return False
 
+    # --- Build the list of unique recipients ---
+    # Using a set automatically handles deduplication.
+    chat_ids_to_notify = set()
+
+    # 1. Always add the default chat_id
+    default_chat_id = config.chat_id
+    chat_ids_to_notify.add(default_chat_id)
+
+    # 2. Add the target chat_id if it exists and is different
+    if target_chat_id:
+        chat_ids_to_notify.add(target_chat_id)
+
+    logging.info(f"Notification will be sent to chat IDs: {list(chat_ids_to_notify)}")
+
+    # --- Construct the message caption (once) ---
     caption = (
-        f"**{company_name}**\n"
-        f"{summary_text}\n"
-        f"[View Full Report]({doc_url})"
+        f"✅ **New Company Analysis: {company_name}**\n\n"
+        f"{summary_text}\n\n"
+        f"[View Full Report in Google Docs]({doc_url})"
     )
-    logging.info(f"Caption: {caption}")
-    # --- Prepare the API request ---
-    api_url = f"https://api.telegram.org/bot{token}/sendDocument"
-    payload = {"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"}
 
-    try:
-        # Check if the file exists before trying to open it
-        if not os.path.exists(file_path):
-            logging.error(f"Error: Document not found at path: {file_path}")
-            return False
-
-        # Open the file in binary read mode and send the request
-        with open(file_path, "rb") as document:
-            files = {"document": document}
-            logging.info(f"Uploading {os.path.basename(file_path)} to Telegram...")
-
-            response = requests.post(api_url, data=payload, files=files, timeout=60)
-
-            # Raise an exception for HTTP error codes (4xx or 5xx)
-            response.raise_for_status()
-
-        logging.info("Telegram notification with document sent successfully.")
-        return True
-
-    except requests.exceptions.Timeout:
-        logging.exception("Error: The request to Telegram timed out.")
+    if not os.path.exists(file_path):
+        logging.error(f"Document not found at path: {file_path}. Cannot send.")
         return False
-    except requests.exceptions.RequestException as e:
-        logging.exception(
-            f"Error: Failed to send Telegram notification. An error occurred with the request: {e}"
-        )
-        return False
-    except Exception as e:
-        logging.exception(f"An unexpected error occurred during Telegram sending: {e}")
-        return False
+
+    # --- Loop and send to all unique recipients ---
+    all_successful = True
+    for chat_id in chat_ids_to_notify:
+        if not _send_single_telegram_document(chat_id, caption, file_path, config):
+            all_successful = False  # Track if any sends failed
+
+    if all_successful:
+        logging.info("All Telegram notifications sent successfully.")
+    else:
+        logging.warning("One or more Telegram notifications failed to send.")
+
+    return all_successful
 
 
 if __name__ == "__main__":
+    from genai.helpers.config import get_settings
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     config = get_settings()
     caption = """['PFE Investment Analysis Summary\nRecommendation: BUY\nEntry Range: $23.00 - $26.00\nPrice Target (12-Month Exit): $38.00\nThesis in Brief:']"""
     send_report_to_telegram(
@@ -76,6 +93,6 @@ if __name__ == "__main__":
         caption,
         r"C:\Python Projects\IBKRBot\debug_main_error.png",
         "www.google.com",
-        config.telegram.token,
-        config.telegram.chat_id,
+        config.telegram,
+        "123456789",
     )

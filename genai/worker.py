@@ -6,7 +6,11 @@ from typing import Any
 # --- UPDATED IMPORT BLOCK ---
 from genai.helpers.config import Settings, get_settings
 from genai.helpers.google_api_helpers import get_drive_service
-from genai.constants import DATABASE_PATH
+from genai.constants import (
+    DATABASE_PATH,
+    RESPONSE_CONTENT_CSS,
+    SHARE_EXPORT_BUTTON_XPATH,
+)
 from genai.helpers.prompt_text import PROMPT_TEXT, PROMPT_TEXT_2, PROMPT_TEXT_3
 from genai.helpers.logging_config import setup_logging
 from genai.workflow import (
@@ -21,7 +25,6 @@ from genai.workflow import (
 
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
-from genai.helpers.prompt_text import PROMPT_TEXT, PROMPT_TEXT_2
 from genai.workflow import get_response, enter_prompt_and_submit
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -49,7 +52,7 @@ def handle_task_failure(conn: sqlite3.Connection, task_id: int, error_message: s
             return
 
         current_retries = result[0]
-        
+
         if current_retries < MAX_RETRIES:
             # Increment retry count and set status back to 'queued'
             new_retry_count = current_retries + 1
@@ -59,7 +62,7 @@ def handle_task_failure(conn: sqlite3.Connection, task_id: int, error_message: s
             )
             cursor.execute(
                 "UPDATE tasks SET status = 'queued', retry_count = ? WHERE id = ?",
-                (new_retry_count, task_id)
+                (new_retry_count, task_id),
             )
         else:
             # Max retries reached, mark as a permanent error
@@ -67,16 +70,17 @@ def handle_task_failure(conn: sqlite3.Connection, task_id: int, error_message: s
                 f"Task {task_id} has failed after {MAX_RETRIES} retries. Marking as permanent error."
             )
             update_task_status(conn, task_id, "error", error_message)
-        
+
         conn.commit()
 
     except sqlite3.Error as e:
         logging.error(f"Database error during failure handling for task {task_id}: {e}")
 
-def get_next_queued_task(conn: sqlite3.Connection) -> tuple[int, str, str] | None:
+
+def get_next_queued_task(conn: sqlite3.Connection) -> tuple[int, str, str, str] | None:
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, company_name, task_type FROM tasks WHERE status = 'queued' ORDER BY requested_at ASC LIMIT 1"
+        "SELECT id, company_name, task_type, requested_by FROM tasks WHERE status = 'queued' ORDER BY requested_at ASC LIMIT 1"
     )
     return cursor.fetchone()
 
@@ -116,11 +120,11 @@ def handle_screener_task(
         navigate_to_url(driver, "https://gemini.google.com/app")
         perform_deep_research(driver, PROMPT_TEXT)
         WebDriverWait(driver, 1200).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Export')]"))
+            EC.element_to_be_clickable((By.XPATH, SHARE_EXPORT_BUTTON_XPATH))
         )
 
         responses_before = len(
-            driver.find_elements(By.CSS_SELECTOR, ".response-content")
+            driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
         )
         enter_prompt_and_submit(driver, PROMPT_TEXT_2)
         company_list = get_response(driver, responses_before, is_csv=True)
@@ -148,27 +152,29 @@ def handle_deep_dive_task(
     driver: WebDriver,
     task_id: int,
     company_name: str,
-    active_jobs: dict[int, ResearchJob],
-) -> None:
+    requested_by: str | None,
+) -> ResearchJob:  # <-- CHANGE: Now returns a ResearchJob object
     """
-    Launches a deep dive research task in a new tab and adds it to the active job pool.
-    This is called by the main worker loop.
+    Launches a deep dive research task in a new tab and returns the job's details.
     """
     logging.info(f"Launching deep dive for task ID: {task_id}, Company: {company_name}")
     driver.switch_to.new_window("tab")
     new_handle: str = driver.current_window_handle
 
-    active_jobs[task_id] = {
+    navigate_to_url(driver, "https://gemini.google.com/app")
+    prompt = f"{PROMPT_TEXT_3} {company_name}."
+    perform_deep_research(driver, prompt)
+
+    # CHANGE: Instead of modifying active_jobs, we create and return the new job's data.
+    new_job_details: ResearchJob = {
         "task_id": task_id,
         "handle": new_handle,
         "company_name": company_name,
         "status": "processing",
         "started_at": time.time(),
+        "requested_by": requested_by,  # Ensure we keep track of who requested it
     }
-
-    navigate_to_url(driver, "https://gemini.google.com/app")
-    prompt = f"{PROMPT_TEXT_3} {company_name}."
-    perform_deep_research(driver, prompt)
+    return new_job_details
 
 
 # --- Main Worker Logic ---
@@ -196,7 +202,7 @@ def main() -> None:
                 try:
                     driver.switch_to.window(job["handle"])
                     if driver.find_elements(
-                        By.XPATH, "//button[contains(., 'Export')]"
+                        By.XPATH,
                     ):
 
                         # The call to the imported function
@@ -220,7 +226,9 @@ def main() -> None:
                                 )
                             else:
                                 # --- CHANGE: Call the new failure handler ---
-                                error_msg = results.get("error_message", "Processing failed.")
+                                error_msg = results.get(
+                                    "error_message", "Processing failed."
+                                )
                                 handle_task_failure(conn, task_id, error_msg)
                         completed_task_ids.append(task_id)
 
@@ -255,7 +263,7 @@ def main() -> None:
                 if len(active_jobs) < MAX_ACTIVE_RESEARCH_JOBS:
                     task = get_next_queued_task(conn)
                     if task:
-                        task_id, company_name, task_type = task
+                        task_id, company_name, task_type, requested_by = task
                         update_task_status(conn, task_id, "processing")
 
                         if task_type == "undervalued_screener":
@@ -263,8 +271,11 @@ def main() -> None:
                             handle_screener_task(driver, task_id, conn)
 
                         elif task_type == "company_deep_dive":
-                            handle_deep_dive_task(
-                                driver, task_id, company_name, active_jobs
+                            new_job = handle_deep_dive_task(
+                                driver, task_id, company_name, requested_by
+                            )
+                            active_jobs[task_id] = (
+                                new_job  # The main loop manages the state
                             )
                             driver.switch_to.window(original_tab)
 
