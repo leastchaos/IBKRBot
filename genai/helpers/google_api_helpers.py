@@ -3,6 +3,7 @@ import os
 import re
 
 # --- Third-party imports ---
+from google.auth import exceptions
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -27,23 +28,33 @@ def _load_or_refresh_credentials() -> Credentials | None:
     if creds and creds.valid:
         return creds
 
-    # 3. If credentials have expired, refresh them.
+    # 3. If credentials have expired, try to refresh them.
     if creds and creds.expired and creds.refresh_token:
-        logging.info("Refreshing expired Google API credentials...")
-        creds.refresh(Request())
-        # After refreshing, save the new token and return
-        with open(GDRIVE_TOKEN_PATH, "w") as token:
-            token.write(creds.to_json())
-        logging.info("Google API credentials refreshed and saved.")
-        return creds
+        logging.info("Attempting to refresh expired Google API credentials...")
+        try:
+            creds.refresh(Request())
+            # If refresh was successful, save the new token and return
+            with open(GDRIVE_TOKEN_PATH, "w") as token:
+                token.write(creds.to_json())
+            logging.info("Google API credentials refreshed and saved.")
+            return creds
+        except exceptions.RefreshError as e:
+            logging.warning(f"Failed to refresh token: {e}")
+            logging.warning(
+                "The refresh token is likely revoked. Deleting old token and forcing re-authentication."
+            )
+            if os.path.exists(GDRIVE_TOKEN_PATH):
+                os.remove(GDRIVE_TOKEN_PATH)
+            # Fall through to re-authenticate by letting creds be None or invalid.
+            creds = None
 
     # 4. If we get here, we need to perform the full, first-time authentication.
+    # This happens if no token exists, or if the refresh token was revoked.
     logging.info("Performing first-time authentication for Google Drive API...")
     flow = InstalledAppFlow.from_client_secrets_file(
         GDRIVE_CREDENTIALS_PATH, GDRIVE_SCOPES
     )
     creds = flow.run_local_server(port=0)
-    # Save the new credentials for the next run
     with open(GDRIVE_TOKEN_PATH, "w") as token:
         token.write(creds.to_json())
     logging.info("Google API credentials created and saved.")
@@ -131,40 +142,50 @@ def get_doc_id_from_url(url: str) -> str | None:
 
 
 if __name__ == "__main__":
-    # This block demonstrates the new, more robust, and efficient way to use the functions.
+    # This block demonstrates a more robust and linear way to use the functions.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     # 1. Get the service object ONCE.
     logging.info("Authenticating and getting Google Drive service...")
     drive_service = get_drive_service()
 
-    # 2. Only proceed if authentication was successful.
-    if drive_service:
-        logging.info("Authentication successful.")
-
-        # NOTE: You must get your folder ID from your config object.
-        # This is just an example.
-        from genai.helpers.config import get_settings
-
-        config = get_settings()
-        reports_folder_id = config.drive.folder_id
-
-        test_url = "https://docs.google.com/document/d/1vjMHr4Kn9Ki_eJ2T19SOMADICEo_uVtmY9r08dkFTlo/edit"
-
-        logging.info(f"\nProcessing URL: {test_url}")
-        doc_id = get_doc_id_from_url(test_url)
-
-        # 3. Only proceed if the document ID is valid.
-        if doc_id:
-            logging.info(f"Extracted Document ID: {doc_id}")
-
-            # 4. Chain the operations, checking for success at each step.
-            if move_file_to_folder(drive_service, doc_id, reports_folder_id):
-                share_google_doc_publicly(drive_service, doc_id)
-        else:
-            logging.warning(
-                "Halting process for this URL because Document ID could not be determined."
-            )
-    else:
+    # 2. Guard clause: Only proceed if authentication was successful.
+    if not drive_service:
         logging.warning(
             "Halting execution because Google Drive service could not be initialized."
         )
+        # In a real script, you might use 'sys.exit(1)' here.
+        # For this example, we'll just return to stop execution of this block.
+        # import sys; sys.exit(1)
+        # For now, just return
+        # return
+
+    logging.info("Authentication successful.")
+
+    from genai.helpers.config import get_settings
+
+    config = get_settings()
+    reports_folder_id = config.drive.folder_id
+
+    test_url = "https://docs.google.com/document/d/1vjMHr4Kn9Ki_eJ2T19SOMADICEo_uVtmY9r08dkFTlo/edit"
+
+    logging.info(f"\nProcessing URL: {test_url}")
+    doc_id = get_doc_id_from_url(test_url)
+
+    # 3. Guard clause: Only proceed if the document ID is valid.
+    if not doc_id:
+        logging.warning(
+            "Halting process for this URL because Document ID could not be determined."
+        )
+        # return
+
+    logging.info(f"Extracted Document ID: {doc_id}")
+
+    # 4. Chain the operations, using guard clauses to ensure robustness.
+    # First, try to move the file if a folder ID is provided.
+    if reports_folder_id:
+        if not move_file_to_folder(drive_service, doc_id, reports_folder_id):
+            logging.error(f"Failed to move file {doc_id}, will not proceed with sharing.")
+            # return  # Stop here if move fails
+
+    # If we are here, either move was successful or not required. Proceed to share.
+    share_google_doc_publicly(drive_service, doc_id)
