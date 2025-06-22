@@ -108,44 +108,43 @@ def navigate_to_url(driver: WebDriver, url: str = GEMINI_URL) -> None:
 
 
 def enter_text(driver: WebDriver, prompt: str) -> None:
-    """Enters text into the prompt textarea WITHOUT submitting with RETURN."""
+    """Enters text into the prompt textarea instantly using JavaScript."""
     logging.info("Injecting prompt text directly via JavaScript...")
     try:
-        # 1. Find the target element as before.
         prompt_textarea = WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, PROMPT_TEXTAREA_CSS))
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".ql-editor[contenteditable='true']"))
         )
-
-        # 2. Define the JavaScript to execute.
-        # It sets the element's text content and then dispatches 'input' and 'change' events
-        # to ensure the web application (Gemini) recognizes the new text.
         js_script = """
             var element = arguments[0];
             var text = arguments[1];
-            
-            // For contenteditable divs, setting textContent is a reliable method.
             element.textContent = text;
-            
-            // Dispatch events to simulate user input and trigger any JS listeners on the page.
             element.dispatchEvent(new Event('input', { bubbles: true }));
             element.dispatchEvent(new Event('change', { bubbles: true }));
         """
-
-        # 3. Execute the script with the element and prompt as arguments.
         driver.execute_script(js_script, prompt_textarea, prompt)
-
-        time.sleep(1)  # A small pause for the page to react.
+        time.sleep(1)
         logging.info("Text entered successfully using JavaScript.")
     except Exception:
-        logging.error(
-            "Failed to enter text into prompt textarea using JavaScript.", exc_info=True
-        )
-        raise
+        # --- NEW: Add diagnostics on failure ---
+        logging.error("Failed to find or interact with prompt textarea.", exc_info=True)
+        # Save a screenshot to see what the page looks like
+        screenshot_path = f"error_screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        driver.save_screenshot(screenshot_path)
+        logging.info(f"Saved error screenshot to: {screenshot_path}")
+        
+        # Save the page source to check for changed selectors or pop-ups
+        html_path = f"error_page_source_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(driver.page_source)
+        logging.info(f"Saved page HTML to: {html_path}")
+        # --- END NEW ---
+        raise # Re-raise the exception to be caught by the calling function
 
 
 def enter_prompt_and_submit(driver: WebDriver, prompt: str) -> None:
     """Enters the prompt in the prompt textarea and submits with RETURN."""
     enter_text(driver, prompt)
+    time.sleep(1)
     try:
         prompt_textarea = driver.find_element(By.CSS_SELECTOR, PROMPT_TEXTAREA_CSS)
         prompt_textarea.send_keys(Keys.RETURN)
@@ -166,25 +165,41 @@ def perform_deep_research(driver: WebDriver, prompt: str) -> None:
     """Handles the full workflow for initiating a Deep Research task."""
     try:
         logging.info("Locating and clicking Deep Research button...")
-        WebDriverWait(driver, 20).until(
-            EC.element_to_be_clickable((By.XPATH, DEEP_RESEARCH_BUTTON_XPATH))
-        ).click()
+        try:
+            WebDriverWait(driver, 60).until(
+                EC.element_to_be_clickable((By.XPATH, DEEP_RESEARCH_BUTTON_XPATH))
+            ).click()
+        except StaleElementReferenceException:
+            logging.info(
+                "Deep Research button became stale. Re-finding and clicking."
+            )
+            time.sleep(1)
+            driver.find_element(By.XPATH, DEEP_RESEARCH_BUTTON_XPATH).click()
+
+        logging.info("Deep Research button clicked. Entering prompt...")
         time.sleep(1)
         enter_prompt_and_submit(driver, prompt)
 
         logging.info(
             "Prompt text entered. Locating and clicking Start Research button..."
         )
-        WebDriverWait(driver, 120).until(
-            EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
-        ).click()
-
+        try:
+            WebDriverWait(driver, 120).until(
+                EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
+            ).click()
+        except StaleElementReferenceException:
+            logging.info(
+                "Start Research button became stale. Re-finding and clicking."
+            )
+            time.sleep(1)
+            driver.find_element(By.XPATH, START_RESEARCH_BUTTON_XPATH).click()
         logging.info("Deep Research initiated.")
+        return True
     except Exception:
         logging.error(
             "An error occurred during Deep Research initiation.", exc_info=True
         )
-        raise
+        return False
 
 
 def get_response(
@@ -299,45 +314,34 @@ def _manage_google_drive_file(
         )
         return
 
-    if drive_config.folder_id:
-        move_file_to_folder(service, doc_id, drive_config.folder_id)
-    share_google_doc_publicly(service, doc_id)
+    try:
+        if drive_config.folder_id:
+            move_file_to_folder(service, doc_id, drive_config.folder_id)
+        share_google_doc_publicly(service, doc_id)
+    except Exception:
+        logging.error(f"An unexpected error occurred while managing Google Drive file {doc_id}.", exc_info=True)
 
 
-def _download_and_notify(
+def _send_final_notification(
     doc_url: str,
     summary_text: str,
     company_name: str,
     config: Settings,
     target_chat_id: str | None,
 ):
-    """Private helper to handle downloading, notifying, and cleaning up."""
-    pdf_path: str | None = None
-    try:
-        if not config.chrome or not config.chrome.download_dir:
-            logging.warning(
-                "Download directory not configured. Skipping PDF download and notification."
-            )
-            return
+    """Private helper to handle sending the final notification to Telegram."""
+    if not config.telegram:
+        logging.warning("Telegram not configured. Skipping notification.")
+        return
 
-        pdf_path = download_google_doc_as_pdf(
-            doc_url, config.chrome.download_dir, company_name
-        )
-        if not pdf_path:
-            raise ValueError("Failed to download the report as a PDF.")
-
-        send_report_to_telegram(
-            company_name=company_name,
-            summary_text=summary_text,
-            file_path=pdf_path,
-            doc_url=doc_url,
-            config=config.telegram,
-            target_chat_id=target_chat_id,
-        )
-    finally:
-        if pdf_path and os.path.exists(pdf_path):
-            logging.info(f"Cleaning up downloaded file: {pdf_path}")
-            os.remove(pdf_path)
+    # The logic is now just a single function call.
+    send_report_to_telegram(
+        company_name=company_name,
+        summary_text=summary_text,
+        doc_url=doc_url,
+        config=config.telegram,
+        target_chat_id=target_chat_id
+    )
 
 
 def process_completed_job(
@@ -377,7 +381,7 @@ def process_completed_job(
                 )
         # --- END NEW ---
         _manage_google_drive_file(service, get_doc_id_from_url(doc_url), config.drive)
-        _download_and_notify(
+        _send_final_notification(
             doc_url, summary_text, company_name, config, target_chat_id
         )
 

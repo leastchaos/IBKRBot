@@ -83,7 +83,7 @@ Your analysis should be based solely on publicly available information up to the
 
 The stock ticker to be analyzed is """
 
-PROMPT_TEXT_4 = """From the detailed report above, provide the current price of the ticker, investment direction, entry range and exit range followed by a thesis for a Telegram caption (DO NOT EXCEED 800 characters).
+PROMPT_TEXT_4 = """From the detailed report above, provide the current price of the ticker, investment direction, entry range and exit range followed by a thesis for a Telegram caption (DO NOT EXCEED 4000 characters).
 """
 
 PROMPT_TEXT_5 = """You are a tactical execution analyst. Your task is to evaluate a pre-approved stock to determine if today is an opportune moment to initiate a position within the established buy range. Your analysis must be swift, data-driven, and focused on short-term technicals and news flow.

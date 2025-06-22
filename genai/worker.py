@@ -158,7 +158,7 @@ def handle_deep_dive_task(
     task_id: int,
     company_name: str,
     requested_by: str | None,
-) -> ResearchJob:  # <-- CHANGE: Now returns a ResearchJob object
+) -> ResearchJob | None:
     """
     Launches a deep dive research task in a new tab and returns the job's details.
     """
@@ -168,8 +168,15 @@ def handle_deep_dive_task(
 
     navigate_to_url(driver, "https://gemini.google.com/app")
     prompt = f"{PROMPT_TEXT_3} {company_name}."
-    perform_deep_research(driver, prompt)
-
+    success = perform_deep_research(driver, prompt)
+    if not success:
+        logging.error(f"Failed to perform deep dive for task ID: {task_id}")
+        try:
+            driver.switch_to.window(new_handle)
+            driver.close()
+        except Exception as e:
+            logging.warning(f"Could not close window for task {task_id}: {e}")
+        return None
     # CHANGE: Instead of modifying active_jobs, we create and return the new job's data.
     new_job_details: ResearchJob = {
         "task_id": task_id,
@@ -182,13 +189,13 @@ def handle_deep_dive_task(
     return new_job_details
 
 
-def launch_browser_research_task(
+def launch_research_task(
     driver: WebDriver,
     task_id: int,
     company_name: str,
     requested_by: str | None,
     prompt_template: str,  # <-- NEW: Accepts a prompt template
-) -> None:
+) -> ResearchJob:
     """
     Launches a research task in a new tab using a specified prompt.
     """
@@ -269,8 +276,8 @@ def main() -> None:
                         exc_info=True,
                     )
                     with sqlite3.connect(DATABASE_PATH) as conn:
-                        update_task_status(
-                            conn, task_id, "error", "Worker failed to check job status."
+                        handle_task_failure(
+                            conn, task_id, "Worker failed to check job status."
                         )
                     completed_task_ids.append(task_id)
 
@@ -291,39 +298,50 @@ def main() -> None:
 
             # Fetch and dispatch new tasks
             with sqlite3.connect(DATABASE_PATH) as conn:
-                if len(active_jobs) < MAX_ACTIVE_RESEARCH_JOBS:
-                    task = get_next_queued_task(conn)
-                    if task:
-                        task_id, company_name, task_type, requested_by = task
-                        update_task_status(conn, task_id, "processing")
+                if len(active_jobs) > MAX_ACTIVE_RESEARCH_JOBS:
+                    logging.info("Maximum active research jobs reached. Waiting...")
+                    time.sleep(MONITORING_INTERVAL_SECONDS)
+                    continue
 
-                        if task_type == "undervalued_screener":
-                            driver.switch_to.window(original_tab)
-                            handle_screener_task(driver, task_id, conn)
+                task = get_next_queued_task(conn)
+                if not task:
+                    logging.info("No more tasks to process. Going to sleep...")
+                    time.sleep(MONITORING_INTERVAL_SECONDS)
+                    continue
 
-                        elif task_type in ["company_deep_dive", "daily_monitor"]:
-                            # Select the correct prompt based on the task type
-                            if task_type == "daily_monitor":
-                                prompt_template = PROMPT_TEXT_5
-                                logging.info(
-                                    f"Dispatching task {task_id} with DAILY MONITOR prompt."
-                                )
-                            else:  # company_deep_dive
-                                prompt_template = PROMPT_TEXT_3
-                                logging.info(
-                                    f"Dispatching task {task_id} with DEEP DIVE prompt."
-                                )
+                task_id, company_name, task_type, requested_by = task
+                update_task_status(conn, task_id, "processing")
 
-                            # Call the generic launch function
-                            new_job_details = launch_browser_research_task(
-                                driver,
-                                task_id,
-                                company_name,
-                                requested_by,
-                                prompt_template,
-                            )
-                            active_jobs[task_id] = new_job_details
-                            driver.switch_to.window(original_tab)
+                if task_type == "undervalued_screener":
+                    driver.switch_to.window(original_tab)
+                    handle_screener_task(driver, task_id, conn)
+
+                elif task_type in ["company_deep_dive", "daily_monitor"]:
+                    # Select the correct prompt based on the task type
+                    if task_type == "daily_monitor":
+                        prompt_template = PROMPT_TEXT_5
+                        logging.info(
+                            f"Dispatching task {task_id} with DAILY MONITOR prompt."
+                        )
+                    else:  # company_deep_dive
+                        prompt_template = PROMPT_TEXT_3
+                        logging.info(
+                            f"Dispatching task {task_id} with DEEP DIVE prompt."
+                        )
+
+                    # Call the generic launch function
+                    new_job = launch_research_task(
+                        driver,
+                        task_id,
+                        company_name,
+                        requested_by,
+                        prompt_template,
+                    )
+                    if new_job:
+                        active_jobs[task_id] = new_job
+                    else:
+                        handle_task_failure(conn, task_id, "Failed to launch task.")
+                    driver.switch_to.window(original_tab)
             logging.info(
                 f"Monitoring... {len(active_jobs)} active deep dives. Sleeping for {MONITORING_INTERVAL_SECONDS}s."
             )
