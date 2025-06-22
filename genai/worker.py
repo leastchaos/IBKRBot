@@ -10,12 +10,11 @@ from genai.constants import (
     DATABASE_PATH,
     RESPONSE_CONTENT_CSS,
     SHARE_EXPORT_BUTTON_XPATH,
+    TASK_PROMPT_MAP,
 )
 from genai.helpers.prompt_text import (
     PROMPT_TEXT,
     PROMPT_TEXT_2,
-    PROMPT_TEXT_3,
-    PROMPT_TEXT_5,
 )
 from genai.helpers.logging_config import setup_logging
 from genai.workflow import (
@@ -153,49 +152,14 @@ def handle_screener_task(
         update_task_status(conn, task_id, "error", str(e))
 
 
-def handle_deep_dive_task(
-    driver: WebDriver,
-    task_id: int,
-    company_name: str,
-    requested_by: str | None,
-) -> ResearchJob | None:
-    """
-    Launches a deep dive research task in a new tab and returns the job's details.
-    """
-    logging.info(f"Launching deep dive for task ID: {task_id}, Company: {company_name}")
-    driver.switch_to.new_window("tab")
-    new_handle: str = driver.current_window_handle
-
-    navigate_to_url(driver, "https://gemini.google.com/app")
-    prompt = f"{PROMPT_TEXT_3} {company_name}."
-    success = perform_deep_research(driver, prompt)
-    if not success:
-        logging.error(f"Failed to perform deep dive for task ID: {task_id}")
-        try:
-            driver.switch_to.window(new_handle)
-            driver.close()
-        except Exception as e:
-            logging.warning(f"Could not close window for task {task_id}: {e}")
-        return None
-    # CHANGE: Instead of modifying active_jobs, we create and return the new job's data.
-    new_job_details: ResearchJob = {
-        "task_id": task_id,
-        "handle": new_handle,
-        "company_name": company_name,
-        "status": "processing",
-        "started_at": time.time(),
-        "requested_by": requested_by,  # Ensure we keep track of who requested it
-    }
-    return new_job_details
-
-
 def launch_research_task(
     driver: WebDriver,
     task_id: int,
     company_name: str,
     requested_by: str | None,
-    prompt_template: str,  # <-- NEW: Accepts a prompt template
-) -> ResearchJob:
+    prompt_template: str,
+    task_type: str,
+) -> ResearchJob | None:
     """
     Launches a research task in a new tab using a specified prompt.
     """
@@ -205,51 +169,82 @@ def launch_research_task(
     navigate_to_url(driver)
     # Use the provided prompt template
     prompt = f"{prompt_template} {company_name}."
-    perform_deep_research(driver, prompt)
+    success = perform_deep_research(driver, prompt)
+    if not success:
+        logging.error(f"Failed to launch research for task ID: {task_id}")
+        try:
+            driver.switch_to.window(new_handle)
+            driver.close()
+        except Exception as e:
+            logging.warning(f"Could not close window for failed task {task_id}: {e}")
+        return None
     new_job_details: ResearchJob = {
         "task_id": task_id,
         "handle": new_handle,
         "company_name": company_name,
         "status": "processing",
         "started_at": time.time(),
-        "requested_by": requested_by,  # Ensure we keep track of who requested it
+        "requested_by": requested_by,
+        "task_type": task_type,
     }
     return new_job_details
 
 
 # --- Decomposed Main Loop Functions ---
 
-def check_and_process_active_jobs(driver: WebDriver, active_jobs: dict[int, ResearchJob], config: Settings, service: Any) -> list[int]:
+
+def check_and_process_active_jobs(
+    driver: WebDriver,
+    active_jobs: dict[int, ResearchJob],
+    config: Settings,
+    service: Any,
+) -> list[int]:
     """Checks all active jobs, processes any that are complete, and returns their IDs."""
     completed_task_ids: list[int] = []
     for task_id, job in list(active_jobs.items()):
         try:
             driver.switch_to.window(job["handle"])
             if not driver.find_elements(By.XPATH, SHARE_EXPORT_BUTTON_XPATH):
-                continue # Guard clause: If not complete, skip to the next job.
+                continue  # Guard clause: If not complete, skip to the next job.
 
             final_status, results = process_completed_job(driver, job, config, service)
-            
+
             with sqlite3.connect(DATABASE_PATH) as conn:
                 if final_status == "completed":
                     update_task_status(conn, task_id, "completed")
-                    update_task_result(conn, task_id, results.get("report_url", ""), results.get("summary", ""))
-                else: # final_status is 'error'
+                    update_task_result(
+                        conn,
+                        task_id,
+                        results.get("report_url", ""),
+                        results.get("summary", ""),
+                    )
+                else:  # final_status is 'error'
                     error_msg = results.get("error_message", "Post-processing failed.")
                     handle_task_failure(conn, task_id, error_msg)
-            
+
             completed_task_ids.append(task_id)
 
         except Exception as e:
-            error_str = f"Worker failed while checking job status: {e.__class__.__name__}"
-            logging.error(f"Error checking active job for task ID {task_id}. {error_str}", exc_info=True)
+            error_str = (
+                f"Worker failed while checking job status: {e.__class__.__name__}"
+            )
+            logging.error(
+                f"Error checking active job for task ID {task_id}. {error_str}",
+                exc_info=True,
+            )
             with sqlite3.connect(DATABASE_PATH) as conn:
                 handle_task_failure(conn, task_id, error_str)
             completed_task_ids.append(task_id)
-            
+
     return completed_task_ids
 
-def cleanup_finished_jobs(driver: WebDriver, active_jobs: dict[int, ResearchJob], completed_ids: list[int], original_tab: str) -> None:
+
+def cleanup_finished_jobs(
+    driver: WebDriver,
+    active_jobs: dict[int, ResearchJob],
+    completed_ids: list[int],
+    original_tab: str,
+) -> None:
     """Removes completed jobs from the active pool and closes their browser tabs."""
     for task_id in completed_ids:
         if task_id not in active_jobs:
@@ -265,39 +260,56 @@ def cleanup_finished_jobs(driver: WebDriver, active_jobs: dict[int, ResearchJob]
         finally:
             driver.switch_to.window(original_tab)
 
-def dispatch_new_tasks(driver: WebDriver, active_jobs: dict[int, ResearchJob], original_tab: str) -> None:
+
+def dispatch_new_task(driver: WebDriver, num_active_jobs: int) -> ResearchJob | None:
     """Checks for queued tasks and dispatches them if slots are available."""
-    if len(active_jobs) >= MAX_ACTIVE_RESEARCH_JOBS:
-        return # Guard clause: Exit if no slots are free.
-    
+    if num_active_jobs >= MAX_ACTIVE_RESEARCH_JOBS:
+        return  # Guard clause: Exit if no slots are free.
+
     with sqlite3.connect(DATABASE_PATH) as conn:
         task = get_next_queued_task(conn)
         if not task:
-            return # Guard clause: Exit if no tasks are in the queue.
+            return None
 
         task_id, company_name, task_type, requested_by = task
         update_task_status(conn, task_id, "processing")
 
         try:
             if task_type == "undervalued_screener":
-                driver.switch_to.window(original_tab)
                 handle_screener_task(driver, task_id, conn)
-            
-            elif task_type in ["company_deep_dive", "daily_monitor"]:
-                prompt_template = PROMPT_TEXT_5 if task_type == "daily_monitor" else PROMPT_TEXT_3
-                logging.info(f"Dispatching task {task_id} ({task_type}) with selected prompt.")
-                new_job = launch_research_task(driver, task_id, company_name, requested_by, prompt_template)
-                active_jobs[task_id] = new_job
-            
-            driver.switch_to.window(original_tab)
+                return None
+            prompt_template = TASK_PROMPT_MAP.get(task_type)
+            if not prompt_template:
+                error_msg = f"No prompt template found for task type '{task_type}'."
+                logging.error(f"Skipping task {task_id}. {error_msg}")
+                # Mark as a permanent error since it's a configuration issue
+                update_task_status(conn, task_id, "error", error_msg)
+                return None
+
+            logging.info(
+                f"Dispatching task {task_id} ({task_type}) with selected prompt."
+            )
+            new_job = launch_research_task(
+                driver, task_id, company_name, requested_by, prompt_template, task_type
+            )
+            if not new_job:
+                handle_task_failure(
+                    conn, task_id, "Failed to launch research in browser."
+                )
+                return None
+
+            return new_job
 
         except Exception as e:
             # This will catch failures from launch_research_task or handle_screener_task
             logging.error(f"Failed to dispatch task {task_id}.", exc_info=True)
-            handle_task_failure(conn, task_id, f"Failed during dispatch: {e.__class__.__name__}")
+            handle_task_failure(
+                conn, task_id, f"Failed during dispatch: {e.__class__.__name__}"
+            )
 
 
 # --- Simplified main() Function ---
+
 
 def main() -> None:
     """The main worker loop that orchestrates all tasks."""
@@ -309,33 +321,44 @@ def main() -> None:
 
     try:
         driver = initialize_driver(
-            config.chrome.user_data_dir, config.chrome.profile_directory, 
-            config.chrome.chrome_driver_path, config.chrome.download_dir
+            config.chrome.user_data_dir,
+            config.chrome.profile_directory,
+            config.chrome.chrome_driver_path,
+            config.chrome.download_dir,
         )
         original_tab: str = driver.current_window_handle
         logging.info("Unified Worker started. Monitoring task queue...")
 
         while True:
             # The main loop is now extremely simple and readable.
-            completed_ids = check_and_process_active_jobs(driver, active_jobs, config, service)
-            
+            completed_ids = check_and_process_active_jobs(
+                driver, active_jobs, config, service
+            )
+
             if completed_ids:
                 cleanup_finished_jobs(driver, active_jobs, completed_ids, original_tab)
-            
-            dispatch_new_tasks(driver, active_jobs, original_tab)
-
-            logging.info(f"Monitoring... {len(active_jobs)} active deep dives. Sleeping for {MONITORING_INTERVAL_SECONDS}s.")
+            driver.switch_to.window(original_tab)
+            new_job = dispatch_new_task(driver, len(active_jobs))
+            if new_job:
+                active_jobs[new_job["task_id"]] = new_job
+            driver.switch_to.window(original_tab)
+            logging.info(
+                f"Monitoring... {len(active_jobs)} active deep dives. Sleeping for {MONITORING_INTERVAL_SECONDS}s."
+            )
             time.sleep(MONITORING_INTERVAL_SECONDS)
 
     except KeyboardInterrupt:
         logging.info("Shutdown signal received.")
     except Exception:
-        logging.critical("A critical error occurred in the worker's main loop.", exc_info=True)
+        logging.critical(
+            "A critical error occurred in the worker's main loop.", exc_info=True
+        )
     finally:
         if driver:
             logging.info("Closing WebDriver.")
             driver.quit()
         logging.info("Worker process terminated.")
+
 
 if __name__ == "__main__":
     main()

@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 # --- Internal Project Imports ---
 from genai.helpers.config import get_settings
 from genai.helpers.logging_config import setup_logging
-from genai.constants import DATABASE_PATH
+from genai.constants import DATABASE_PATH, TaskType
 
 
 # --- Bot Command Handlers ---
@@ -46,7 +46,7 @@ async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO tasks (company_name, requested_by, task_type) VALUES (?, ?, ?)",
-                (company_name, requested_by, 'company_deep_dive')
+                (company_name, requested_by, TaskType.COMPANY_DEEP_DIVE)
             )
             conn.commit()
         logging.info(f"Successfully queued request for {company_name}.")

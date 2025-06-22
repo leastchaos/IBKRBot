@@ -117,3 +117,6 @@ Structure your response as follows:
 * **EXECUTE FULL POSITION:** "Multiple indicators confirm a strong entry point. The stock shows a clear reversal at major support, confirmed by a bullish catalyst/market strength. The risk/reward is highly favorable for a full entry within the buy range."
 **Key Justification:** (e.g., "Price is currently $51.20, in the lower half of the buy range. It is finding support at the 50-day moving average, and the RSI is moving out of oversold territory. However, market sentiment is weak today. Recommend initiating a partial position and monitoring for a close above $52.00.")
 The stock to be analyzed is """
+
+
+PROMPT_BUY_RANGE_CHECK = "Based on the full report above, is the current stock price inside the 'BUY' range you identified? Please answer with only 'YES' or 'NO'."

@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 import time
 import os
 import json
@@ -27,8 +28,9 @@ from genai.helpers.google_api_helpers import (
     share_google_doc_publicly,
 )
 from genai.helpers.notifications import send_report_to_telegram
-from genai.helpers.prompt_text import PROMPT_TEXT_4
+from genai.helpers.prompt_text import PROMPT_BUY_RANGE_CHECK, PROMPT_TEXT_4
 from genai.constants import (
+    DATABASE_PATH,
     GEMINI_URL,
     PROMPT_TEXTAREA_CSS,
     DEEP_RESEARCH_BUTTON_XPATH,
@@ -37,6 +39,7 @@ from genai.constants import (
     EXPORT_TO_DOCS_BUTTON_XPATH,
     RESPONSE_CONTENT_CSS,
     GENERATING_INDICATOR_CSS,
+    TaskType,
 )
 
 
@@ -50,6 +53,7 @@ class ResearchJob(TypedDict):
     status: str
     started_at: float
     requested_by: str | None  # <-- ADD THIS FIELD
+    task_type: str
 
 
 class ProcessingResult(TypedDict, total=False):
@@ -203,14 +207,14 @@ def perform_deep_research(driver: WebDriver, prompt: str) -> None:
 
 
 def get_response(
-    driver: WebDriver, responses_before_prompt: int, is_csv: bool = False
+    driver: WebDriver, responses_before_prompt: int, is_csv: bool = False, timeout: int = 900
 ) -> list[str] | str | None:
     """Waits for and returns the latest AI response, either as a list or a string."""
     try:
         logging.info(
             f"Waiting for new response (currently {responses_before_prompt} on page)..."
         )
-        WebDriverWait(driver, 900).until(
+        WebDriverWait(driver, timeout).until(
             lambda d: len(d.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS))
             > responses_before_prompt
         )
@@ -219,7 +223,7 @@ def get_response(
         )[-1]
 
         logging.info("Waiting for response to finish generating...")
-        WebDriverWait(latest_response_element, 900).until(
+        WebDriverWait(latest_response_element, timeout).until(
             EC.invisibility_of_element_located(
                 (By.CSS_SELECTOR, GENERATING_INDICATOR_CSS)
             )
@@ -343,7 +347,20 @@ def _send_final_notification(
         target_chat_id=target_chat_id
     )
 
-
+def _queue_follow_up_task(company_name: str, original_task_id: int):
+    """Queues a new daily monitor task as a follow-up."""
+    logging.info(f"Queuing follow-up DAILY_MONITOR task for {company_name}.")
+    try:
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO tasks (company_name, requested_by, task_type) VALUES (?, ?, ?)",
+                (company_name, f"follow_up_from_task_{original_task_id}", TaskType.DAILY_MONITOR)
+            )
+            conn.commit()
+        logging.info(f"Successfully queued follow-up task for {company_name}.")
+    except sqlite3.Error:
+        logging.error(f"Database error while queuing follow-up task for {company_name}.", exc_info=True)
 def process_completed_job(
     driver: WebDriver, job: ResearchJob, config: Settings, service: Any
 ) -> tuple[str, ProcessingResult]:
@@ -389,6 +406,18 @@ def process_completed_job(
             "report_url": doc_url,
             "summary": summary_text,
         }
+        if job.get("task_type") == TaskType.COMPANY_DEEP_DIVE:
+            logging.info(f"Performing buy-range check for {company_name}...")
+            res_before_check = len(driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS))
+            enter_prompt_and_submit(driver, PROMPT_BUY_RANGE_CHECK)
+            # Use a shorter timeout for this simple check
+            check_response = get_response(driver, res_before_check)
+
+            if check_response and "YES" in check_response.upper():
+                logging.info(f"'{company_name}' is in buy range. Queuing follow-up task.")
+                _queue_follow_up_task(company_name, job["task_id"])
+            else:
+                logging.info(f"'{company_name}' is not in buy range or check failed. No follow-up task queued.")
         return "completed", final_results
 
     except Exception:

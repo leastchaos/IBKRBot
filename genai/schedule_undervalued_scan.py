@@ -2,7 +2,7 @@ import sqlite3
 import logging
 import os
 from genai.helpers.logging_config import setup_logging
-from genai.constants import DATABASE_PATH
+from genai.constants import DATABASE_PATH, TaskType
 
 def queue_undervalued_screener_task():
     """Adds a single 'undervalued_screener' task to the queue for the worker to handle."""
@@ -16,7 +16,7 @@ def queue_undervalued_screener_task():
             # No company_name is needed for this task type.
             cursor.execute(
                 "INSERT INTO tasks (task_type, requested_by) VALUES (?, ?)",
-                ('undervalued_screener', 'scheduled_screener')
+                ('undervalued_screener', TaskType.UNDERVALUED_SCREENER)
             )
             conn.commit()
         logging.info("✅ Successfully queued the 'undervalued_screener' task.")

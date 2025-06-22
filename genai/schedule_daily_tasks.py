@@ -3,7 +3,7 @@ import logging
 import os
 
 from genai.helpers.logging_config import setup_logging
-from genai.constants import DATABASE_PATH
+from genai.constants import DATABASE_PATH, TaskType
 
 def queue_daily_companies_from_db():
     """
@@ -31,7 +31,7 @@ def queue_daily_companies_from_db():
                 # --- CHANGE: Set the task_type to 'daily_monitor' ---
                 cursor.execute(
                     "INSERT INTO tasks (company_name, requested_by, task_type) VALUES (?, ?, ?)",
-                    (company, 'daily_monitor_script', 'daily_monitor')
+                    (company, 'daily_monitor_script', TaskType.DAILY_MONITOR)
                 )
                 logging.info(f"Queued daily monitoring task for: {company}")
                 queued_count += 1
