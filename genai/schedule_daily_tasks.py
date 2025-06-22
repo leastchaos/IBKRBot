@@ -28,6 +28,8 @@ def queue_daily_companies_from_db():
             logging.info(f"Found {len(companies_to_monitor)} companies to queue for daily monitoring.")
             queued_count = 0
             for company in companies_to_monitor:
+                if company != "NYSE:BABA":
+                    continue
                 # --- CHANGE: Set the task_type to 'daily_monitor' ---
                 cursor.execute(
                     "INSERT INTO tasks (company_name, requested_by, task_type) VALUES (?, ?, ?)",

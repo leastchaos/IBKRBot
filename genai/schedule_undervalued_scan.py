@@ -16,7 +16,7 @@ def queue_undervalued_screener_task():
             # No company_name is needed for this task type.
             cursor.execute(
                 "INSERT INTO tasks (task_type, requested_by) VALUES (?, ?)",
-                ('undervalued_screener', TaskType.UNDERVALUED_SCREENER)
+                (TaskType.UNDERVALUED_SCREENER, "undervalued_screener_script"),
             )
             conn.commit()
         logging.info("✅ Successfully queued the 'undervalued_screener' task.")

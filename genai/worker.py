@@ -3,41 +3,35 @@ import sqlite3
 import time
 from typing import Any
 
-# --- UPDATED IMPORT BLOCK ---
-from genai.helpers.config import Settings, get_settings
-from genai.helpers.google_api_helpers import get_drive_service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
 from genai.constants import (
     DATABASE_PATH,
+    MAX_ACTIVE_RESEARCH_JOBS,
+    MAX_RETRIES,
+    MONITORING_INTERVAL_SECONDS,
     RESPONSE_CONTENT_CSS,
     SHARE_EXPORT_BUTTON_XPATH,
     TASK_PROMPT_MAP,
+    TaskType,
 )
-from genai.helpers.prompt_text import (
-    PROMPT_TEXT,
-    PROMPT_TEXT_2,
-)
+from genai.helpers.config import Settings, get_settings
+from genai.helpers.google_api_helpers import get_drive_service
 from genai.helpers.logging_config import setup_logging
+from genai.helpers.prompt_text import PROMPT_TEXT_2
 from genai.workflow import (
+    ResearchJob,
+    enter_prompt_and_submit,
+    get_response,
     initialize_driver,
     navigate_to_url,
+    perform_daily_monitor_research,
     perform_deep_research,
-    process_completed_job,  # <-- Now imported
-    ResearchJob,  # <-- TypedDict now imported
+    process_completed_job,
 )
-
-# --- END UPDATED IMPORT BLOCK ---
-
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from genai.workflow import get_response, enter_prompt_and_submit
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-
-# --- Constants ---
-MAX_ACTIVE_RESEARCH_JOBS = 2
-MONITORING_INTERVAL_SECONDS = 15
-MAX_RETRIES = 3
 
 
 # --- Database Helper Functions (Unchanged) ---
@@ -81,6 +75,29 @@ def handle_task_failure(conn: sqlite3.Connection, task_id: int, error_message: s
         logging.error(f"Database error during failure handling for task {task_id}: {e}")
 
 
+def get_latest_report_url(conn: sqlite3.Connection, company_name: str) -> str | None:
+    """Fetches the report_url from the most recent completed deep dive for a company."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT report_url FROM tasks
+        WHERE company_name = ?
+          AND task_type = ?
+          AND status = 'completed'
+          AND report_url IS NOT NULL
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (company_name, TaskType.COMPANY_DEEP_DIVE),
+    )
+    result = cursor.fetchone()
+    if not result:
+        logging.warning(
+            f"No previous completed deep dive with a report URL found for {company_name}."
+        )
+        return None
+    return result[0]
+
 def get_next_queued_task(conn: sqlite3.Connection) -> tuple[int, str, str, str] | None:
     cursor = conn.cursor()
     cursor.execute(
@@ -111,83 +128,144 @@ def update_task_result(
     conn.commit()
 
 
-def handle_screener_task(
-    driver: WebDriver, task_id: int, conn: sqlite3.Connection
-) -> None:
+def process_completed_screener(
+    driver: WebDriver, job: ResearchJob
+) -> tuple[str, dict]:
     """
-    Performs the discovery workflow: runs prompts 1 & 2, then queues up new tasks.
-    This is called by the main worker loop.
+    Processes a completed screener job by extracting company names and queuing new tasks.
     """
+    task_id = job["task_id"]
+    logging.info(f"✅ Screener task {task_id} is COMPLETE. Extracting companies...")
 
-    logging.info(f"Handling screener task ID: {task_id}")
     try:
-        navigate_to_url(driver, "https://gemini.google.com/app")
-        perform_deep_research(driver, PROMPT_TEXT)
-        WebDriverWait(driver, 1200).until(
-            EC.element_to_be_clickable((By.XPATH, SHARE_EXPORT_BUTTON_XPATH))
-        )
-
         responses_before = len(
             driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
         )
         enter_prompt_and_submit(driver, PROMPT_TEXT_2)
-        company_list = get_response(driver, responses_before, is_csv=True)
+        # Use a shorter timeout for this simple extraction
+        company_list = get_response(driver, responses_before, is_csv=True, timeout=120)
 
-        if not isinstance(company_list, list):
+        if not company_list or not isinstance(company_list, list):
             raise ValueError("Screener did not return a valid company list.")
 
         logging.info(
             f"Screener discovered {len(company_list)} companies. Queuing them for deep dive..."
         )
-        cursor = conn.cursor()
-        for company in company_list:
-            cursor.execute(
-                "INSERT INTO tasks (company_name, requested_by, task_type) VALUES (?, ?, ?)",
-                (company.strip(), f"screener_task_{task_id}", "company_deep_dive"),
-            )
-        conn.commit()
-        update_task_status(conn, task_id, "completed")
-    except Exception as e:
-        logging.error(f"Error handling screener task {task_id}.", exc_info=True)
-        update_task_status(conn, task_id, "error", str(e))
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            cursor = conn.cursor()
+            for company in company_list:
+                # Ensure we only queue valid-looking tasks
+                if ":" not in company:
+                    logging.warning(
+                        f"Skipping invalid company format from screener: {company}"
+                    )
+                    continue
+                cursor.execute(
+                    "INSERT INTO tasks (company_name, requested_by, task_type) VALUES (?, ?, ?)",
+                    (company.strip(), f"screener_task_{task_id}", "company_deep_dive"),
+                )
+            conn.commit()
+
+        return "completed", {}  # Return empty dict as there are no "results" like a URL
+
+    except Exception:
+        logging.error(
+            f"❌ Error during post-processing for screener task {task_id}.",
+            exc_info=True,
+        )
+        return "error", {
+            "error_message": "Failed to extract or queue companies from screener."
+        }
 
 
 def launch_research_task(
     driver: WebDriver,
     task_id: int,
-    company_name: str,
+    company_name: str | None,
     requested_by: str | None,
-    prompt_template: str,
     task_type: str,
 ) -> ResearchJob | None:
     """
     Launches a research task in a new tab using a specified prompt.
     """
-    logging.info(f"Launching research for task ID: {task_id}, Company: {company_name}")
+    logging.info(
+        f"Launching research for task ID: {task_id}, Type: {task_type}, Company: {company_name or 'N/A'}"
+    )
     driver.switch_to.new_window("tab")
     new_handle: str = driver.current_window_handle
-    navigate_to_url(driver)
-    # Use the provided prompt template
-    prompt = f"{prompt_template} {company_name}."
-    success = perform_deep_research(driver, prompt)
-    if not success:
-        logging.error(f"Failed to launch research for task ID: {task_id}")
+
+    try:
+        navigate_to_url(driver)
+
+        prompt_template = TASK_PROMPT_MAP.get(task_type)
+        if not prompt_template:
+            raise ValueError(f"No prompt template for task type '{task_type}'")
+
+        success = False
+        if task_type == TaskType.DAILY_MONITOR:
+            if not company_name:
+                raise ValueError("Daily monitor task requires a company name.")
+
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                report_url = get_latest_report_url(conn, company_name)
+
+            if report_url:
+                # We have a report, proceed as normal daily monitor
+                success = perform_daily_monitor_research(
+                    driver, prompt_template, report_url
+                )
+            else:
+                # No report, fall back to a deep dive
+                logging.warning(
+                    f"No previous report URL for {company_name} (task {task_id}). "
+                    f"Falling back to a full deep dive analysis."
+                )
+                # Use the deep dive prompt instead
+                deep_dive_prompt_template = TASK_PROMPT_MAP.get(
+                    TaskType.COMPANY_DEEP_DIVE
+                )
+                if not deep_dive_prompt_template:
+                    raise ValueError(
+                        f"No prompt template for fallback task type '{TaskType.COMPANY_DEEP_DIVE}'"
+                    )
+                prompt = f"{deep_dive_prompt_template} {company_name}."
+                success = perform_deep_research(driver, prompt)
+
+
+        elif task_type == TaskType.UNDERVALUED_SCREENER:
+            prompt = prompt_template
+            success = perform_deep_research(driver, prompt)
+
+        elif task_type == TaskType.COMPANY_DEEP_DIVE:
+            prompt = f"{prompt_template} {company_name}."
+            success = perform_deep_research(driver, prompt)
+
+        else:
+            raise ValueError(f"Unhandled task type '{task_type}'")
+
+        if not success:
+            raise RuntimeError("Research initiation workflow returned False.")
+
+        new_job_details: ResearchJob = {
+            "task_id": task_id,
+            "handle": new_handle,
+            "company_name": company_name or "Screener",  # Use a placeholder
+            "status": "processing",
+            "started_at": time.time(),
+            "requested_by": requested_by,
+            "task_type": task_type,
+        }
+        return new_job_details
+
+    except Exception as e:
+        logging.error(f"Failed to launch research for task ID {task_id}: {e}", exc_info=True)
         try:
             driver.switch_to.window(new_handle)
             driver.close()
+            logging.info(f"Successfully closed tab for failed task {task_id}.")
         except Exception as e:
             logging.warning(f"Could not close window for failed task {task_id}: {e}")
         return None
-    new_job_details: ResearchJob = {
-        "task_id": task_id,
-        "handle": new_handle,
-        "company_name": company_name,
-        "status": "processing",
-        "started_at": time.time(),
-        "requested_by": requested_by,
-        "task_type": task_type,
-    }
-    return new_job_details
 
 
 # --- Decomposed Main Loop Functions ---
@@ -207,17 +285,22 @@ def check_and_process_active_jobs(
             if not driver.find_elements(By.XPATH, SHARE_EXPORT_BUTTON_XPATH):
                 continue  # Guard clause: If not complete, skip to the next job.
 
-            final_status, results = process_completed_job(driver, job, config, service)
+            # --- NEW: Route to the correct processing function based on task type ---
+            if job.get("task_type") == TaskType.UNDERVALUED_SCREENER:
+                final_status, results = process_completed_screener(driver, job)
+            else:
+                final_status, results = process_completed_job(
+                    driver, job, config, service
+                )
 
             with sqlite3.connect(DATABASE_PATH) as conn:
                 if final_status == "completed":
                     update_task_status(conn, task_id, "completed")
-                    update_task_result(
-                        conn,
-                        task_id,
-                        results.get("report_url", ""),
-                        results.get("summary", ""),
-                    )
+                    # Only update results if they exist (screener returns an empty dict)
+                    if results.get("report_url"):
+                        update_task_result(
+                            conn, task_id, results["report_url"], results["summary"]
+                        )
                 else:  # final_status is 'error'
                     error_msg = results.get("error_message", "Post-processing failed.")
                     handle_task_failure(conn, task_id, error_msg)
@@ -275,11 +358,10 @@ def dispatch_new_task(driver: WebDriver, num_active_jobs: int) -> ResearchJob | 
         update_task_status(conn, task_id, "processing")
 
         try:
-            if task_type == "undervalued_screener":
-                handle_screener_task(driver, task_id, conn)
-                return None
-            prompt_template = TASK_PROMPT_MAP.get(task_type)
-            if not prompt_template:
+            # REFACTORED: All tasks are now dispatched through the same logic.
+            # For screener tasks, company_name will be None, which is fine.
+            # The prompt for the screener is self-contained.
+            if task_type not in TASK_PROMPT_MAP:
                 error_msg = f"No prompt template found for task type '{task_type}'."
                 logging.error(f"Skipping task {task_id}. {error_msg}")
                 # Mark as a permanent error since it's a configuration issue
@@ -290,7 +372,7 @@ def dispatch_new_task(driver: WebDriver, num_active_jobs: int) -> ResearchJob | 
                 f"Dispatching task {task_id} ({task_type}) with selected prompt."
             )
             new_job = launch_research_task(
-                driver, task_id, company_name, requested_by, prompt_template, task_type
+                driver, task_id, company_name, requested_by, task_type
             )
             if not new_job:
                 handle_task_failure(
@@ -301,11 +383,12 @@ def dispatch_new_task(driver: WebDriver, num_active_jobs: int) -> ResearchJob | 
             return new_job
 
         except Exception as e:
-            # This will catch failures from launch_research_task or handle_screener_task
+            # This will catch failures from launch_research_task
             logging.error(f"Failed to dispatch task {task_id}.", exc_info=True)
             handle_task_failure(
                 conn, task_id, f"Failed during dispatch: {e.__class__.__name__}"
             )
+            return None
 
 
 # --- Simplified main() Function ---
