@@ -1,15 +1,10 @@
 import logging
 import sqlite3
 import time
-import os
-import json
-import re
 from datetime import datetime
 from typing import TypedDict, Any
 
 # Third-party imports
-import pyperclip
-import requests
 from selenium import webdriver
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.chrome.service import Service
@@ -46,6 +41,7 @@ from genai.constants import (
     ADD_FILE_BUTTON_XPATH,
     ADD_FROM_DRIVE_BUTTON_XPATH,
     DRIVE_URL_INPUT_CSS,
+    TELEGRAM_USER_PREFIX,
     TaskType,
 )
 
@@ -79,7 +75,7 @@ def initialize_driver(
     profile_directory: str,
     webdriver_path: str | None,
     download_dir: str,
-    headless:bool = True,
+    headless: bool = True,
 ) -> WebDriver:
     """Initializes and returns a Selenium WebDriver instance for Chrome."""
     chrome_options = Options()
@@ -139,7 +135,6 @@ def enter_text(driver: WebDriver, prompt: str) -> None:
             element.dispatchEvent(new Event('change', { bubbles: true }));
         """
         driver.execute_script(js_script, prompt_textarea, prompt)
-        time.sleep(1)
         logging.info("Text entered successfully using JavaScript.")
     except Exception:
         # --- NEW: Add diagnostics on failure ---
@@ -158,7 +153,6 @@ def enter_text(driver: WebDriver, prompt: str) -> None:
 def enter_prompt_and_submit(driver: WebDriver, prompt: str) -> None:
     """Enters the prompt in the prompt textarea and submits with RETURN."""
     enter_text(driver, prompt)
-    time.sleep(1)
     try:
         prompt_textarea = driver.find_element(By.CSS_SELECTOR, PROMPT_TEXTAREA_CSS)
         prompt_textarea.send_keys(Keys.RETURN)
@@ -167,7 +161,6 @@ def enter_prompt_and_submit(driver: WebDriver, prompt: str) -> None:
         logging.info(
             "Prompt textarea became stale or had an issue. Re-finding and submitting."
         )
-        time.sleep(1)
         prompt_textarea = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, PROMPT_TEXTAREA_CSS))
         )
@@ -175,34 +168,38 @@ def enter_prompt_and_submit(driver: WebDriver, prompt: str) -> None:
         logging.info("Prompt submitted after re-finding.")
 
 
-def perform_deep_research(driver: WebDriver, prompt: str) -> None:
+def _click_deep_research_button(driver: WebDriver):
+    """Waits for and clicks the 'Deep Research' button, handling stale elements."""
+    logging.info("Locating and clicking Deep Research button...")
+    try:
+        WebDriverWait(driver, 60).until(
+            EC.element_to_be_clickable((By.XPATH, DEEP_RESEARCH_BUTTON_XPATH))
+        ).click()
+    except StaleElementReferenceException:
+        logging.info("Deep Research button became stale. Re-finding and clicking.")
+        driver.find_element(By.XPATH, DEEP_RESEARCH_BUTTON_XPATH).click()
+    logging.info("Deep Research button clicked.")
+
+
+def _click_start_research_button(driver: WebDriver):
+    """Waits for and clicks the 'Start Research' button, handling stale elements."""
+    logging.info("Locating and clicking Start Research button...")
+    try:
+        WebDriverWait(driver, 120).until(
+            EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
+        ).click()
+    except StaleElementReferenceException:
+        logging.info("Start Research button became stale. Re-finding and clicking.")
+        driver.find_element(By.XPATH, START_RESEARCH_BUTTON_XPATH).click()
+    logging.info("Start Research button clicked.")
+
+
+def perform_deep_research(driver: WebDriver, prompt: str) -> bool:
     """Handles the full workflow for initiating a Deep Research task."""
     try:
-        logging.info("Locating and clicking Deep Research button...")
-        try:
-            WebDriverWait(driver, 60).until(
-                EC.element_to_be_clickable((By.XPATH, DEEP_RESEARCH_BUTTON_XPATH))
-            ).click()
-        except StaleElementReferenceException:
-            logging.info("Deep Research button became stale. Re-finding and clicking.")
-            time.sleep(1)
-            driver.find_element(By.XPATH, DEEP_RESEARCH_BUTTON_XPATH).click()
-
-        logging.info("Deep Research button clicked. Entering prompt...")
-        time.sleep(1)
+        _click_deep_research_button(driver)
         enter_prompt_and_submit(driver, prompt)
-
-        logging.info(
-            "Prompt text entered. Locating and clicking Start Research button..."
-        )
-        try:
-            WebDriverWait(driver, 120).until(
-                EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
-            ).click()
-        except StaleElementReferenceException:
-            logging.info("Start Research button became stale. Re-finding and clicking.")
-            time.sleep(1)
-            driver.find_element(By.XPATH, START_RESEARCH_BUTTON_XPATH).click()
+        _click_start_research_button(driver)
         logging.info("Deep Research initiated.")
         return True
     except Exception:
@@ -211,6 +208,61 @@ def perform_deep_research(driver: WebDriver, prompt: str) -> None:
         )
         save_debug_screenshot(driver, "deep_research_error")
         return False
+
+
+def _attach_drive_file(driver: WebDriver, report_url: str) -> None:
+    """Handles the UI interaction to attach a Google Drive file by URL."""
+    # 1. Click the "+" button to open the upload menu
+    WebDriverWait(driver, 20).until(
+        EC.element_to_be_clickable((By.XPATH, ADD_FILE_BUTTON_XPATH))
+    ).click()
+    logging.info("Clicked 'Attach files' button.")
+
+    # 2. Click the "Add from Google Drive" option
+    WebDriverWait(driver, 20).until(
+        EC.element_to_be_clickable((By.XPATH, ADD_FROM_DRIVE_BUTTON_XPATH))
+    ).click()
+    logging.info("Clicked 'Add from Google Drive' option.")
+
+    # 3. Switch to the Google Picker iframe
+    picker_iframe = WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located((By.XPATH, PICKER_IFRAME_XPATH))
+    )
+    driver.switch_to.frame(picker_iframe)
+    logging.info("Switched to Google Picker iframe.")
+
+    # 4. Enter the URL and select the file
+    url_input = WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, DRIVE_URL_INPUT_CSS))
+    )
+    url_input.send_keys(report_url)
+    logging.info("Pasted Google Doc URL into input field.")
+    url_input.send_keys(Keys.RETURN)
+    logging.info("Submitted Google Doc URL.")
+
+    doc_id = get_doc_id_from_url(report_url)
+    if not doc_id:
+        raise ValueError(f"Could not extract document ID from URL: {report_url}")
+
+    file_selector_xpath = f"//div[@role='option' and @data-id='{doc_id}']"
+    logging.info(f"Waiting for file element with selector: {file_selector_xpath}")
+    file_element = WebDriverWait(driver, 20).until(
+        EC.element_to_be_clickable((By.XPATH, file_selector_xpath))
+    )
+    file_element.click()
+    logging.info(f"Selected file with doc ID: {doc_id}")
+
+    # 5. Click the "Insert" button
+    logging.info(f"Waiting for the 'Insert' button ({INSERT_BUTTON_XPATH})...")
+    insert_button = WebDriverWait(driver, 20).until(
+        EC.element_to_be_clickable((By.XPATH, INSERT_BUTTON_XPATH))
+    )
+    insert_button.click()
+    logging.info("Clicked 'Insert' button.")
+
+    # 6. Switch back to the main content
+    driver.switch_to.default_content()
+    logging.info("Switched back to default content.")
 
 
 def perform_daily_monitor_research(
@@ -222,86 +274,13 @@ def perform_daily_monitor_research(
     """
     try:
         logging.info(f"Starting daily monitor workflow. Attaching doc: {report_url}")
-        # 1. Click the Deep Research button
-        try:
-            WebDriverWait(driver, 60).until(
-                EC.element_to_be_clickable((By.XPATH, DEEP_RESEARCH_BUTTON_XPATH))
-            ).click()
-        except StaleElementReferenceException:
-            logging.info("Deep Research button became stale. Re-finding and clicking.")
-            time.sleep(1)
-            driver.find_element(By.XPATH, DEEP_RESEARCH_BUTTON_XPATH).click()
-        time.sleep(1)
-
-        # 2. Click the "+" button
-        WebDriverWait(driver, 20).until(
-            EC.element_to_be_clickable((By.XPATH, ADD_FILE_BUTTON_XPATH))
-        ).click()
-        logging.info("Clicked 'Attach files' button.")
-        time.sleep(1)
-
-        # 3. Click the "Add from Google Drive" option
-        WebDriverWait(driver, 20).until(
-            EC.element_to_be_clickable((By.XPATH, ADD_FROM_DRIVE_BUTTON_XPATH))
-        ).click()
-        logging.info("Clicked 'Add from Google Drive' option.")
-        time.sleep(2)  # Allow time for the next modal/input to appear
-
-
-        # 4. Switch to the google picker iframe then Enter the URL into the input field
-        picker_iframe = WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.XPATH, PICKER_IFRAME_XPATH))
-        )
-        
-        driver.switch_to.frame(picker_iframe)
-        logging.info("Switched to Google Picker iframe.")
-        url_input = WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, DRIVE_URL_INPUT_CSS))
-        )
-        url_input.send_keys(report_url)
-        logging.info("Pasted Google Doc URL into input field.")
-        time.sleep(1)
-        url_input.send_keys(Keys.RETURN)
-        logging.info("Submitted Google Doc URL.")
-        # 6. select the file and click "Insert"
-        doc_id = get_doc_id_from_url(report_url)
-        if not doc_id:
-            raise ValueError(f"Could not extract document ID from URL: {report_url}")
-
-        file_selector_xpath = f"//div[@role='option' and @data-id='{doc_id}']"
-        logging.info(f"Waiting for file element with selector: {file_selector_xpath}")
-        file_element = WebDriverWait(driver, 20).until(
-            EC.element_to_be_clickable((By.XPATH, file_selector_xpath))
-        )
-        file_element.click()
-        logging.info(f"Selected file with doc ID: {doc_id}")
-        time.sleep(1)
-
-        # Using a more robust XPath selector that targets the aria-label.
-        
-        logging.info(f"Waiting for the 'Insert' button ({INSERT_BUTTON_XPATH})...")
-        insert_button = WebDriverWait(driver, 20).until(
-            EC.element_to_be_clickable((By.XPATH, INSERT_BUTTON_XPATH))
-        )
-        insert_button.click()
-        logging.info("Clicked 'Insert' button.")
-        driver.switch_to.default_content()
-        logging.info("Switched back to default content.")
-        time.sleep(1)
-
-        # 6. Now, submit the actual prompt for analysis
+        _click_deep_research_button(driver)
+        _attach_drive_file(driver, report_url)
         enter_prompt_and_submit(driver, prompt)
         logging.info("Daily monitor prompt submitted for analysis.")
-        time.sleep(1)
-        try:
-            WebDriverWait(driver, 120).until(
-                EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
-            ).click()
-        except StaleElementReferenceException:
-            logging.info("Start Research button became stale. Re-finding and clicking.")
-            time.sleep(1)
-            driver.find_element(By.XPATH, START_RESEARCH_BUTTON_XPATH).click()
-        logging.info("Deep Research initiated.")
+        # 4. Click the final "Start Research" button
+        _click_start_research_button(driver)
+        logging.info("Daily monitor research initiated.")
         return True
 
     except Exception:
@@ -319,7 +298,26 @@ def get_response(
     is_csv: bool = False,
     timeout: int = 900,
 ) -> list[str] | str | None:
-    """Waits for and returns the latest AI response, either as a list or a string."""
+    """
+    Waits for and returns the latest AI response.
+
+    This function is designed to be robust against partially loaded or streaming
+    responses. It performs three stages of waiting:
+    1. Waits for a new response container to be added to the DOM.
+    2. Waits for the "generating..." progress bar to disappear.
+    3. Waits for the text content of the response to stabilize, ensuring the
+       full response has been streamed and rendered.
+
+    Args:
+        driver: The Selenium WebDriver instance.
+        responses_before_prompt: The number of response elements on the page
+            before the current prompt was submitted.
+        is_csv: If True, the response text will be split by commas into a list.
+        timeout: The maximum time in seconds to wait for the response.
+
+    Returns:
+        The response text as a string or list of strings, or None on failure.
+    """
     try:
         logging.info(
             f"Waiting for new response (currently {responses_before_prompt} on page)..."
@@ -371,7 +369,11 @@ def get_response(
         if not last_text:
             return None
 
-        return [item.strip() for item in last_text.split(",") if item.strip()] if is_csv else last_text
+        return (
+            [item.strip() for item in last_text.split(",") if item.strip()]
+            if is_csv
+            else last_text
+        )
     except Exception:
         logging.error("An error occurred in get_response.", exc_info=True)
         save_debug_screenshot(driver, "get_response_error")
@@ -386,7 +388,6 @@ def export_and_get_doc_url(driver: WebDriver, current_tab_handle: str) -> str | 
         WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.XPATH, SHARE_EXPORT_BUTTON_XPATH))
         ).click()
-        time.sleep(1)
         WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.XPATH, EXPORT_TO_DOCS_BUTTON_XPATH))
         ).click()
@@ -518,7 +519,7 @@ def process_completed_job(
         # --- Parse the target_chat_id from the job data ---
         target_chat_id = None
         requested_by = job.get("requested_by")
-        if requested_by and requested_by.startswith("telegram:"):
+        if requested_by and requested_by.startswith(TELEGRAM_USER_PREFIX):
             try:
                 target_chat_id = requested_by.split(":", 1)[1]
             except IndexError:
@@ -583,5 +584,9 @@ if __name__ == "__main__":
     )
     driver.get("https://gemini.google.com/app")
     input("Press Enter to continue...")
-    perform_daily_monitor_research(driver, "test", "https://docs.google.com/document/d/1hpSthpQ3_Rn23LwA8a730N0oO2QD1lTce6QJ4mzkGug/edit?tab=t.0" \
-    "")
+    perform_daily_monitor_research(
+        driver,
+        "test",
+        "https://docs.google.com/document/d/1hpSthpQ3_Rn23LwA8a730N0oO2QD1lTce6QJ4mzkGug/edit?tab=t.0"
+        "",
+    )

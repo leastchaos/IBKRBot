@@ -11,6 +11,7 @@ GEMINI_URL = "https://gemini.google.com/app"
 MAX_ACTIVE_RESEARCH_JOBS = 2
 MONITORING_INTERVAL_SECONDS = 15
 MAX_RETRIES = 3
+TELEGRAM_USER_PREFIX = "telegram:"
 
 # --- NEW: Google API Constants ---
 # The scopes define the level of access the script requests.
@@ -36,7 +37,7 @@ GENERATING_INDICATOR_CSS = "progress.mat-mdc-linear-progress"
 ADD_FILE_BUTTON_XPATH = "//button[@aria-label='Open upload file menu']"
 ADD_FROM_DRIVE_BUTTON_XPATH = "//button[@data-test-id='uploader-drive-button']"
 DRIVE_URL_INPUT_CSS = "input[aria-label='Search in Drive or paste URL']"
-INSERT_BUTTON_XPATH = "//button[@aria-label='Insert 1 item']"
+INSERT_BUTTON_XPATH = "//button[contains(@aria-label, 'Insert') and not(@disabled)]"
 PICKER_IFRAME_XPATH = "//iframe[contains(@src, 'docs.google.com/picker/v2/home')]"
 class TaskType(str, Enum):
     """Defines the valid types of tasks the worker can process."""
