@@ -90,6 +90,21 @@ def get_drive_service() -> Resource | None:
         return None
 
 
+def rename_google_doc(service: Resource, doc_id: str, new_title: str) -> bool:
+    """Renames a Google Drive file."""
+    logging.info(f"Renaming doc {doc_id} to '{new_title}'...")
+    try:
+        body = {"name": new_title}
+        service.files().update(fileId=doc_id, body=body, fields="id, name").execute()
+        logging.info("✅ File renamed successfully.")
+        return True
+    except HttpError as error:
+        logging.error(
+            f"❌ An API error occurred while renaming the file.", exc_info=True
+        )
+        return False
+
+
 def share_google_doc_publicly(service: Resource, doc_id: str) -> bool:
     """Sets a Google Drive file's permission to "anyone with the link can view"."""
     logging.info(f"Setting public 'viewer' permissions for doc ID: {doc_id}...")

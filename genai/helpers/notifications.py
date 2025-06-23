@@ -4,13 +4,14 @@ from typing import Any
 
 # --- Internal Project Imports ---
 from genai.constants import TaskType
+from genai.helpers.config import TelegramSettings
 
 
 def send_report_to_telegram(
     company_name: str,
     summary_text: str,
     doc_url: str,
-    config: Any,
+    config: TelegramSettings,
     task_type: str,
     target_chat_id: str | None = None,
 ) -> bool:
@@ -60,6 +61,7 @@ def send_report_to_telegram(
             "parse_mode": "Markdown",
             "disable_web_page_preview": True,
         }
+        logging.info(f"Payload: {payload}")
         api_url = f"https://api.telegram.org/bot{config.token}/sendMessage"
 
         try:

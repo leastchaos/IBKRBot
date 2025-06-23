@@ -25,6 +25,7 @@ from genai.helpers.config import DriveSettings, Settings
 from genai.helpers.google_api_helpers import (
     get_doc_id_from_url,
     move_file_to_folder,
+    rename_google_doc,
     share_google_doc_publicly,
 )
 from genai.helpers.notifications import send_report_to_telegram
@@ -338,18 +339,40 @@ def get_response(
                 (By.CSS_SELECTOR, GENERATING_INDICATOR_CSS)
             )
         )
-        logging.info("Response finished generating.")
-        time.sleep(1)
+        logging.info("Initial response generation indicator has disappeared.")
 
-        raw_text = latest_response_element.text
+        # --- NEW: Wait for the text content to stabilize ---
+        stabilization_timeout = 30  # Max seconds to wait for text to stop changing
+        stabilization_interval = 2  # Seconds between checks
+        start_time = time.time()
+        last_text = ""
 
-        if not raw_text:
+        while time.time() - start_time < stabilization_timeout:
+            try:
+                current_text = latest_response_element.text
+                if current_text == last_text and current_text:
+                    logging.info("✅ Response text has stabilized.")
+                    break
+                last_text = current_text
+                logging.debug(
+                    f"Response text not yet stable. Waiting {stabilization_interval}s..."
+                )
+                time.sleep(stabilization_interval)
+            except StaleElementReferenceException:
+                logging.warning("Response element became stale, re-finding...")
+                latest_response_element = driver.find_elements(
+                    By.CSS_SELECTOR, RESPONSE_CONTENT_CSS
+                )[-1]
+                continue  # Retry the loop immediately
+        else:
+            logging.warning(
+                f"Response text did not stabilize within {stabilization_timeout}s. Using last captured content."
+            )
+
+        if not last_text:
             return None
 
-        if is_csv:
-            return [item.strip() for item in raw_text.split(",") if item.strip()]
-
-        return raw_text
+        return [item.strip() for item in last_text.split(",") if item.strip()] if is_csv else last_text
     except Exception:
         logging.error("An error occurred in get_response.", exc_info=True)
         return None
@@ -390,17 +413,20 @@ def export_and_get_doc_url(driver: WebDriver, current_tab_handle: str) -> str | 
 
 
 def _manage_google_drive_file(
-    service: Any, doc_id: str | None, drive_config: DriveSettings
+    service: Any,
+    doc_id: str | None,
+    drive_config: DriveSettings,
+    new_title: str | None = None,
 ):
     """Private helper to handle all Google Drive API interactions for a file."""
-    if not doc_id or not service or not drive_config:
-        logging.warning(
-            "Missing doc_id, drive_service, or drive_config. Skipping Drive actions."
-        )
+    if not doc_id or not service:
+        logging.warning("Missing doc_id or drive_service. Skipping Drive actions.")
         return
 
     try:
-        if drive_config.folder_id:
+        if new_title:
+            rename_google_doc(service, doc_id, new_title)
+        if drive_config and drive_config.folder_id:
             move_file_to_folder(service, doc_id, drive_config.folder_id)
         share_google_doc_publicly(service, doc_id)
     except Exception:
@@ -475,6 +501,7 @@ def process_completed_job(
         )
         enter_prompt_and_submit(driver, PROMPT_TEXT_4)
         summary_text = get_response(driver, res_before_summary, is_csv=False)
+        logging.info(f"Summary: {summary_text}")
 
         doc_url = export_and_get_doc_url(driver, job["handle"])
 
@@ -482,19 +509,22 @@ def process_completed_job(
             raise ValueError(
                 "Failed to get a valid Doc URL or Summary string from Gemini."
             )
-        # --- NEW: Parse the target_chat_id from the job data ---
+
+        doc_id = get_doc_id_from_url(doc_url)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        new_doc_title = f"{timestamp}_{company_name}_{task_type}"
+
+        # --- Parse the target_chat_id from the job data ---
         target_chat_id = None
         requested_by = job.get("requested_by")
         if requested_by and requested_by.startswith("telegram:"):
             try:
-                # Extracts the ID part from "telegram:12345"
                 target_chat_id = requested_by.split(":", 1)[1]
             except IndexError:
                 logging.warning(
                     f"Could not parse chat ID from requested_by field: {requested_by}"
                 )
-        # --- END NEW ---
-        _manage_google_drive_file(service, get_doc_id_from_url(doc_url), config.drive)
+        _manage_google_drive_file(service, doc_id, config.drive, new_doc_title)
         _send_final_notification(
             doc_url, summary_text, company_name, config, task_type, target_chat_id
         )

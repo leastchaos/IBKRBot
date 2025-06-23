@@ -93,7 +93,7 @@ PROMPT_TEXT_4 = """From the detailed report above, extract the key information a
 [A concise, summary of the investment thesis from the report, suitable for a message not exceeding 4000 characters.]
 """
 
-PROMPT_TEXT_5 = """You are a tactical execution analyst. A Google Doc containing a full, pre-approved investment thesis for a stock has been attached to this session. Your task is to use that document as context to determine if today is an opportune moment to initiate a position.
+PROMPT_TEXT_5 = """You are a tactical execution analyst. A Google Doc containing a full, pre-approved investment thesis for a stock has been attached to this session. Your task is to use that document as context to determine if today is an opportune moment to initiate a position/adjust a position held.
 
 //-- ANALYSIS PROTOCOL --//
 

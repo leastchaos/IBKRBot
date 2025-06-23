@@ -67,7 +67,7 @@ This is where you get the actual `credentials.json` file.
 
 1.  **Rename and Place the File:**
     * Find the file you just downloaded.
-    * Rename it to exactly **`credentials.json`**.
+    * Rename it to exactly **`genai_cred.json`**.
     * Place this file inside the `credentials/` folder in your project directory.
 
 2.  **Delete the Old Token (If it Exists):**

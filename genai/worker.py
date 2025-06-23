@@ -410,7 +410,6 @@ def main(headless: bool = True) -> None:
             config.chrome.download_dir,
             headless=headless,
         )
-        input("Press Enter to continue...")
         original_tab: str = driver.current_window_handle
         logging.info("Unified Worker started. Monitoring task queue...")
 
@@ -446,4 +445,4 @@ def main(headless: bool = True) -> None:
 
 
 if __name__ == "__main__":
-    main(headless=False)
+    main(headless=True)

@@ -19,7 +19,7 @@ GDRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 # Paths for Google API credentials.
 CREDENTIALS_DIR = os.path.join(os.getcwd(), "credentials")
 GDRIVE_TOKEN_PATH = os.path.join(CREDENTIALS_DIR, "token.json")
-GDRIVE_CREDENTIALS_PATH = os.path.join(CREDENTIALS_DIR, "google_oauth_cred.json")
+GDRIVE_CREDENTIALS_PATH = os.path.join(CREDENTIALS_DIR, "genai_cred.json")
 
 # --- CSS Selectors ---
 PROMPT_TEXTAREA_CSS = ".ql-editor[contenteditable='true']"
