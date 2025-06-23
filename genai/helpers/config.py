@@ -21,6 +21,7 @@ class TelegramSettings:
     """Configuration for Telegram notifications."""
     token: str
     chat_id: str
+    admin_id: str
 
 
 @dataclass(frozen=True)

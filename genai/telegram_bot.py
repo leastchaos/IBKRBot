@@ -20,11 +20,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "Hello! I am the Gemini Research Bot.\n\n"
         "**Ad-hoc Research:**\n"
         "Use `/research <EXCHANGE:TICKER>` to request a new analysis.\n"
-        "Example: `/research NASDAQ:NVDA`\n\n"
+        "Example: `/research NASDAQ:NVDA`\n"
         "**Manage Daily Monitoring List:**\n"
         "`/add <TICKER>` - Adds a company to the daily scan.\n"
         "`/remove <TICKER>` - Removes a company from the daily scan.\n"
-        "`/listdaily` - Shows all companies in the daily scan list."
+        "`/listdaily` - Shows all companies in the daily scan list.\n\n"
+        "**Admin Commands:**\n"
+        "`/clearqueue` - Clears all uncompleted tasks."
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -132,6 +134,34 @@ async def list_daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Sorry, there was a database error.")
 
 
+async def clear_queue_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """(Admin-only) Clears all 'queued' and 'processing' tasks from the queue."""
+    config = get_settings()
+    # Ensure the configured chat_id is a string for comparison
+    admin_id = str(config.telegram.admin_id)
+    user_id = str(update.effective_user.id)
+
+    if not admin_id or user_id != admin_id:
+        logging.warning(f"Unauthorized attempt to use /clearqueue from user ID {user_id}.")
+        await update.message.reply_text("⛔️ Sorry, this is an admin-only command.")
+        return
+
+    try:
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            cursor = conn.cursor()
+            # Clear tasks that are waiting or currently running
+            cursor.execute("DELETE FROM tasks WHERE status IN ('queued', 'processing')")
+            tasks_cleared = cursor.rowcount
+            conn.commit()
+
+            logging.info(f"Admin {user_id} cleared the task queue. {tasks_cleared} tasks removed.")
+            await update.message.reply_text(f"✅ Queue cleared. {tasks_cleared} pending/processing tasks were removed.")
+
+    except sqlite3.Error as e:
+        logging.error(f"Database error during queue clearing: {e}", exc_info=True)
+        await update.message.reply_text("Sorry, there was a database error while clearing the queue.")
+
+
 def main() -> None:
     """Starts the bot and registers all command handlers."""
     setup_logging()
@@ -150,6 +180,7 @@ def main() -> None:
     application.add_handler(CommandHandler("add", add_daily_command))
     application.add_handler(CommandHandler("remove", remove_daily_command))
     application.add_handler(CommandHandler("listdaily", list_daily_command))
+    application.add_handler(CommandHandler("clearqueue", clear_queue_command))
 
     logging.info("Telegram bot started and polling for messages...")
     # Run the bot until the user presses Ctrl-C
