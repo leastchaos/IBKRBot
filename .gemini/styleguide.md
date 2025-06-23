@@ -43,6 +43,7 @@ Adhere strictly to [PEP 8 -- Style Guide for Python Code](https://www.python.org
 ## 5. Code Structure: Modules & Packages
 
 * **Logical Grouping:** Group related classes, functions, and constants into logical modules (`.py` files).
+* **Single Responsibility Principle (SRP):** Just like classes and functions, each module (`.py` file) should have a single, well-defined responsibility. For example, a file might handle database interactions for a specific model (`user_repository.py`), define application-specific exceptions (`exceptions.py`), or contain utility functions for a particular domain (`string_utils.py`).
 * **Clear Boundaries:** Packages should define clear functional boundaries (e.g., `services/`, `models/`, `utils/`, `api/`).
 * **Constants File:** All project-wide constants (used in more than one module) **must** be defined in a dedicated `constants.py` file in the root of the relevant package.
 * **Utility Modules:** Generic, widely applicable helper functions should reside in a `utils.py` module. Specific helper functions relevant to a single module should live within that module.
