@@ -394,7 +394,7 @@ def dispatch_new_task(driver: WebDriver, num_active_jobs: int) -> ResearchJob | 
 # --- Simplified main() Function ---
 
 
-def main() -> None:
+def main(headless: bool = True) -> None:
     """The main worker loop that orchestrates all tasks."""
     setup_logging()
     config: Settings = get_settings()
@@ -408,7 +408,9 @@ def main() -> None:
             config.chrome.profile_directory,
             config.chrome.chrome_driver_path,
             config.chrome.download_dir,
+            headless=headless,
         )
+        input("Press Enter to continue...")
         original_tab: str = driver.current_window_handle
         logging.info("Unified Worker started. Monitoring task queue...")
 
@@ -425,8 +427,8 @@ def main() -> None:
             if new_job:
                 active_jobs[new_job["task_id"]] = new_job
             driver.switch_to.window(original_tab)
-            logging.info(
-                f"Monitoring... {len(active_jobs)} active deep dives. Sleeping for {MONITORING_INTERVAL_SECONDS}s."
+            logging.debug(
+                f"Monitoring... {len(active_jobs)} active jobs. Sleeping for {MONITORING_INTERVAL_SECONDS}s."
             )
             time.sleep(MONITORING_INTERVAL_SECONDS)
 
@@ -444,4 +446,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(headless=False)

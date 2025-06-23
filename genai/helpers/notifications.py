@@ -2,18 +2,22 @@ import requests
 import logging
 from typing import Any
 
+# --- Internal Project Imports ---
+from genai.constants import TaskType
+
 
 def send_report_to_telegram(
     company_name: str,
     summary_text: str,
     doc_url: str,
     config: Any,
+    task_type: str,
     target_chat_id: str | None = None,
 ) -> bool:
     """
     Sends a text message with a summary and a link to a Google Doc to one or more chats.
     """
-    logging.info(f"Preparing to send text notification for {company_name}...")
+    logging.info(f"Preparing to send text notification for {company_name} (Type: {task_type})...")
     if not config or not config.token:
         logging.error("Telegram token not configured. Cannot send notifications.")
         return False
@@ -31,10 +35,17 @@ def send_report_to_telegram(
 
     logging.info(f"Notification will be sent to chat IDs: {list(chat_ids_to_notify)}")
 
+    # --- Construct title based on task type ---
+    if task_type == TaskType.COMPANY_DEEP_DIVE:
+        title = f"✅ **New Deep-Dive Analysis: {company_name}**"
+    elif task_type == TaskType.DAILY_MONITOR:
+        title = f"📈 **Daily Tactical Update: {company_name}**"
+    else:
+        title = f"ℹ️ **New Report: {company_name}**"
+
     # --- Construct the message text ---
-    # This is now the entire message body, not a caption.
     message_text = (
-        f"✅ **New Company Analysis: {company_name}**\n\n"
+        f"{title}\n\n"
         f"{summary_text}\n\n"
         f"View Full Report:\n"
         f"[Click here to open Google Doc]({doc_url})"
@@ -69,14 +80,16 @@ def send_report_to_telegram(
 
 if __name__ == "__main__":
     from genai.helpers.config import get_settings
+    from genai.constants import TaskType
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     config = get_settings()
     caption = """['PFE Investment Analysis Summary\nRecommendation: BUY\nEntry Range: $23.00 - $26.00\nPrice Target (12-Month Exit): $38.00\nThesis in Brief:']"""
     send_report_to_telegram(
-        "Example Company",
-        caption,
-        "www.google.com",
-        config.telegram,
-        "123456789",
+        company_name="Example Company",
+        summary_text=caption,
+        doc_url="www.google.com",
+        config=config.telegram,
+        task_type=TaskType.COMPANY_DEEP_DIVE,
+        target_chat_id="123456789",
     )

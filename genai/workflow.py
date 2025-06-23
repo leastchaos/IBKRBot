@@ -77,9 +77,12 @@ def initialize_driver(
     profile_directory: str,
     webdriver_path: str | None,
     download_dir: str,
+    headless:bool = True,
 ) -> WebDriver:
     """Initializes and returns a Selenium WebDriver instance for Chrome."""
     chrome_options = Options()
+    if headless:
+        chrome_options.add_argument("--headless")
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_argument("--disable-extensions")
@@ -412,6 +415,7 @@ def _send_final_notification(
     summary_text: str,
     company_name: str,
     config: Settings,
+    task_type: str,
     target_chat_id: str | None,
 ):
     """Private helper to handle sending the final notification to Telegram."""
@@ -425,6 +429,7 @@ def _send_final_notification(
         summary_text=summary_text,
         doc_url=doc_url,
         config=config.telegram,
+        task_type=task_type,
         target_chat_id=target_chat_id,
     )
 
@@ -458,6 +463,7 @@ def process_completed_job(
     """
     Processes a completed job by orchestrating summary, export, and notification steps.
     """
+    task_type = job["task_type"]
     company_name = job["company_name"]
     logging.info(
         f"✅ Research for '{company_name}' is COMPLETE. Starting post-processing workflow..."
@@ -490,14 +496,14 @@ def process_completed_job(
         # --- END NEW ---
         _manage_google_drive_file(service, get_doc_id_from_url(doc_url), config.drive)
         _send_final_notification(
-            doc_url, summary_text, company_name, config, target_chat_id
+            doc_url, summary_text, company_name, config, task_type, target_chat_id
         )
 
         final_results: ProcessingResult = {
             "report_url": doc_url,
             "summary": summary_text,
         }
-        if job.get("task_type") == TaskType.COMPANY_DEEP_DIVE:
+        if task_type == TaskType.COMPANY_DEEP_DIVE:
             logging.info(f"Performing buy-range check for {company_name}...")
             res_before_check = len(
                 driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)

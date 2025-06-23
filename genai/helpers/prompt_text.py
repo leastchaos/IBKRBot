@@ -83,7 +83,14 @@ Your analysis should be based solely on publicly available information up to the
 
 The stock ticker to be analyzed is """
 
-PROMPT_TEXT_4 = """From the detailed report above, provide the current price of the ticker, investment direction, entry range and exit range followed by a thesis for a Telegram caption (DO NOT EXCEED 4000 characters).
+PROMPT_TEXT_4 = """From the detailed report above, extract the key information and format your response *exactly* as follows. Do not add any other text, headers, or explanations. Fill in the data based on the report.
+
+**Current Price:** [The current price from the report]
+**Investment Direction:** [The investment direction from the report (e.g., Buy, Hold, Sell)]
+**Entry Range:** [The entry price range from the report]
+**Exit Range:** [The exit price range or target from the report]
+**Thesis:**
+[A concise, summary of the investment thesis from the report, suitable for a message not exceeding 4000 characters.]
 """
 
 PROMPT_TEXT_5 = """You are a tactical execution analyst. A Google Doc containing a full, pre-approved investment thesis for a stock has been attached to this session. Your task is to use that document as context to determine if today is an opportune moment to initiate a position.
