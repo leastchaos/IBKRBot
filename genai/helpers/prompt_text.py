@@ -1,7 +1,8 @@
 PROMPT_TEXT = """Act as a senior stock specialist preparing a formal presentation for a highly critical investment board.
-Your task is to identify and present a compelling investment thesis on one to two undervalued stocks. Your analysis must be original, deeply analytical, and not a mere aggregation of analyst consensus.
+Your task is to identify and present a compelling investment thesis on one to two undervalued stocks from the US (NYSE, NASDAQ) or Hong Kong (SEHK) markets. Your analysis must be original, deeply analytical, and not a mere aggregation of analyst consensus.
 The primary criteria are that these stocks possess significant short-term rally potential (3-6 months) while also having fundamentals, assets, or a strategic position strong enough to justify a long-term hold (3-5+ years) without the necessity of a stop-loss.
 //-- STRICT CRITERIA FOR STOCK SELECTION --//
+0. Market Focus: The selected companies must be listed on a major US exchange (NYSE, NASDAQ) or the Hong Kong Stock Exchange (SEHK).
 1. Valuation (Full-Spectrum Adaptive Methodology):
 Your first step is to determine the most appropriate valuation framework by analyzing the company's industry, business model, and lifecycle stage (e.g., Growth, Mature, Cyclical, Distressed). You must select and justify a primary valuation model and support it with relevant secondary methods.
 Primary Valuation Models (Choose the most appropriate):
