@@ -30,6 +30,7 @@ from genai.helpers.google_api_helpers import (
 )
 from genai.helpers.notifications import send_report_to_telegram
 from genai.helpers.prompt_text import PROMPT_BUY_RANGE_CHECK, PROMPT_TEXT_4
+from genai.helpers.helpers import save_debug_screenshot
 from genai.constants import (
     DATABASE_PATH,
     GEMINI_URL,
@@ -117,6 +118,7 @@ def navigate_to_url(driver: WebDriver, url: str = GEMINI_URL) -> None:
         logging.info("Page loaded.")
     except TimeoutException:
         logging.exception("Timeout waiting for page to load initial elements.")
+        save_debug_screenshot(driver, "navigate_to_url_timeout")
         raise
 
 
@@ -142,12 +144,7 @@ def enter_text(driver: WebDriver, prompt: str) -> None:
     except Exception:
         # --- NEW: Add diagnostics on failure ---
         logging.error("Failed to find or interact with prompt textarea.", exc_info=True)
-        # Save a screenshot to see what the page looks like
-        screenshot_path = (
-            f"error_screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-        )
-        driver.save_screenshot(screenshot_path)
-        logging.info(f"Saved error screenshot to: {screenshot_path}")
+        save_debug_screenshot(driver, "enter_text_error")
 
         # Save the page source to check for changed selectors or pop-ups
         html_path = f"error_page_source_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
@@ -212,6 +209,7 @@ def perform_deep_research(driver: WebDriver, prompt: str) -> None:
         logging.error(
             "An error occurred during Deep Research initiation.", exc_info=True
         )
+        save_debug_screenshot(driver, "deep_research_error")
         return False
 
 
@@ -311,6 +309,7 @@ def perform_daily_monitor_research(
             "An error occurred during the daily monitor research workflow.",
             exc_info=True,
         )
+        save_debug_screenshot(driver, "daily_monitor_error")
         return False
 
 
@@ -375,6 +374,7 @@ def get_response(
         return [item.strip() for item in last_text.split(",") if item.strip()] if is_csv else last_text
     except Exception:
         logging.error("An error occurred in get_response.", exc_info=True)
+        save_debug_screenshot(driver, "get_response_error")
         return None
 
 
@@ -405,6 +405,7 @@ def export_and_get_doc_url(driver: WebDriver, current_tab_handle: str) -> str | 
         return doc_url
     except Exception:
         logging.error("An error occurred during report export.", exc_info=True)
+        save_debug_screenshot(driver, "export_doc_error")
         driver.switch_to.window(current_tab_handle)
         return None
 
@@ -557,6 +558,7 @@ def process_completed_job(
         logging.error(
             f"❌ Error during post-processing for '{company_name}'.", exc_info=True
         )
+        save_debug_screenshot(driver, f"post_processing_error_{company_name}")
         final_results: ProcessingResult = {
             "error_message": "An error occurred during post-processing."
         }

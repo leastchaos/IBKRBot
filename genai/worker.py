@@ -20,6 +20,7 @@ from genai.constants import (
 )
 from genai.helpers.config import Settings, get_settings
 from genai.helpers.google_api_helpers import get_drive_service
+from genai.helpers.helpers import save_debug_screenshot
 from genai.helpers.logging_config import setup_logging
 from genai.helpers.prompt_text import PROMPT_TEXT_2
 from genai.workflow import (
@@ -259,6 +260,7 @@ def launch_research_task(
 
     except Exception as e:
         logging.error(f"Failed to launch research for task ID {task_id}: {e}", exc_info=True)
+        save_debug_screenshot(driver, f"launch_task_error_{task_id}")
         try:
             driver.switch_to.window(new_handle)
             driver.close()
@@ -315,6 +317,7 @@ def check_and_process_active_jobs(
                 f"Error checking active job for task ID {task_id}. {error_str}",
                 exc_info=True,
             )
+            save_debug_screenshot(driver, f"check_job_error_{task_id}")
             with sqlite3.connect(DATABASE_PATH) as conn:
                 handle_task_failure(conn, task_id, error_str)
             completed_task_ids.append(task_id)
@@ -437,6 +440,8 @@ def main(headless: bool = True) -> None:
         logging.critical(
             "A critical error occurred in the worker's main loop.", exc_info=True
         )
+        if driver:
+            save_debug_screenshot(driver, "worker_main_critical_error")
     finally:
         if driver:
             logging.info("Closing WebDriver.")
@@ -445,4 +450,4 @@ def main(headless: bool = True) -> None:
 
 
 if __name__ == "__main__":
-    main(headless=True)
+    main(headless=False)
