@@ -2,6 +2,7 @@ import logging
 import sqlite3
 import time
 from typing import Any
+from datetime import datetime, timedelta
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -76,12 +77,14 @@ def handle_task_failure(conn: sqlite3.Connection, task_id: int, error_message: s
         logging.error(f"Database error during failure handling for task {task_id}: {e}")
 
 
-def get_latest_report_url(conn: sqlite3.Connection, company_name: str) -> str | None:
-    """Fetches the report_url from the most recent completed deep dive for a company."""
+def get_latest_report_info(
+    conn: sqlite3.Connection, company_name: str
+) -> tuple[str, str] | None:
+    """Fetches the report_url and timestamp from the most recent completed deep dive."""
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT report_url FROM tasks
+        SELECT report_url, requested_at FROM tasks
         WHERE company_name = ?
           AND task_type = ?
           AND status = 'completed'
@@ -97,7 +100,7 @@ def get_latest_report_url(conn: sqlite3.Connection, company_name: str) -> str | 
             f"No previous completed deep dive with a report URL found for {company_name}."
         )
         return None
-    return result[0]
+    return result
 
 def get_next_queued_task(conn: sqlite3.Connection) -> tuple[int, str, str, str] | None:
     cursor = conn.cursor()
@@ -207,20 +210,34 @@ def launch_research_task(
             if not company_name:
                 raise ValueError("Daily monitor task requires a company name.")
 
+            report_url = None
             with sqlite3.connect(DATABASE_PATH) as conn:
-                report_url = get_latest_report_url(conn, company_name)
+                report_info = get_latest_report_info(conn, company_name)
+
+            if report_info:
+                url, timestamp_str = report_info
+                # SQLite timestamp format is 'YYYY-MM-DD HH:MM:SS'
+                report_datetime = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                if datetime.now() - report_datetime <= timedelta(days=7):
+                    report_url = url
+                else:
+                    logging.warning(
+                        f"Previous report for {company_name} is older than 7 days (from {timestamp_str}). "
+                        f"It will be regenerated via a full deep dive."
+                    )
 
             if report_url:
-                # We have a report, proceed as normal daily monitor
+                # We have a recent report, proceed as normal daily monitor
                 success = perform_daily_monitor_research(
                     driver, prompt_template, report_url
                 )
             else:
-                # No report, fall back to a deep dive
-                logging.warning(
-                    f"No previous report URL for {company_name} (task {task_id}). "
-                    f"Falling back to a full deep dive analysis."
-                )
+                # No report, or report is stale. Fall back to a deep dive.
+                if not report_info:  # Only log this if there was no report at all
+                    logging.warning(
+                        f"No previous report URL for {company_name} (task {task_id}). "
+                        f"Falling back to a full deep dive analysis."
+                    )
                 # Use the deep dive prompt instead
                 deep_dive_prompt_template = TASK_PROMPT_MAP.get(
                     TaskType.COMPANY_DEEP_DIVE
@@ -231,7 +248,6 @@ def launch_research_task(
                     )
                 prompt = f"{deep_dive_prompt_template} {company_name}."
                 success = perform_deep_research(driver, prompt)
-
 
         elif task_type == TaskType.UNDERVALUED_SCREENER:
             prompt = prompt_template
@@ -450,4 +466,4 @@ def main(headless: bool = True) -> None:
 
 
 if __name__ == "__main__":
-    main(headless=False)
+    main(headless=True)
