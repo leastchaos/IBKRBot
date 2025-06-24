@@ -232,16 +232,29 @@ def launch_research_task(
                     driver, prompt_template, report_url
                 )
             else:
-                # No report, or report is stale. Fall back to a deep dive.
+                # No report, or report is stale. Fall back to a full deep dive.
+                # THIS IS THE CRITICAL FIX: We must update the task's type in the database
+                # so that the generated report is correctly categorized as a deep dive.
+                logging.warning(
+                    f"Task {task_id} is falling back to a deep dive. Updating task type in DB."
+                )
+                with sqlite3.connect(DATABASE_PATH) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE tasks SET task_type = ? WHERE id = ?",
+                        (TaskType.COMPANY_DEEP_DIVE, task_id),
+                    )
+                    conn.commit()
+                # Also update the local variable to ensure the rest of the logic uses the new type.
+                task_type = TaskType.COMPANY_DEEP_DIVE
+
                 if not report_info:  # Only log this if there was no report at all
                     logging.warning(
                         f"No previous report URL for {company_name} (task {task_id}). "
                         f"Falling back to a full deep dive analysis."
                     )
                 # Use the deep dive prompt instead
-                deep_dive_prompt_template = TASK_PROMPT_MAP.get(
-                    TaskType.COMPANY_DEEP_DIVE
-                )
+                deep_dive_prompt_template = TASK_PROMPT_MAP.get(task_type)
                 if not deep_dive_prompt_template:
                     raise ValueError(
                         f"No prompt template for fallback task type '{TaskType.COMPANY_DEEP_DIVE}'"

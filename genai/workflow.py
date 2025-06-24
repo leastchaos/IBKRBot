@@ -82,6 +82,7 @@ def initialize_driver(
     if headless:
         chrome_options.add_argument("--headless")
     chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
@@ -541,8 +542,8 @@ def process_completed_job(
                 driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
             )
             enter_prompt_and_submit(driver, PROMPT_BUY_RANGE_CHECK)
-            # Use a shorter timeout for this simple check
-            check_response = get_response(driver, res_before_check)
+            # Use a shorter timeout for this simple YES/NO check
+            check_response = get_response(driver, res_before_check, timeout=120)
 
             if check_response and "YES" in check_response.upper():
                 logging.info(
