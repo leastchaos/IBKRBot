@@ -61,11 +61,11 @@ def send_report_to_telegram(
             "parse_mode": "Markdown",
             "disable_web_page_preview": True,
         }
-        logging.info(f"Payload: {payload}")
+        # Log the full payload at DEBUG level for detailed troubleshooting
+        logging.debug(f"Full payload for chat_id {chat_id}: {payload}")
         api_url = f"https://api.telegram.org/bot{config.token}/sendMessage"
 
         try:
-            logging.info(f"Sending notification to chat ID: {chat_id}...")
             response = requests.post(api_url, json=payload, timeout=30)
             response.raise_for_status()
         except requests.exceptions.RequestException:

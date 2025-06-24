@@ -14,6 +14,21 @@ from genai.constants import DATABASE_PATH, TaskType
 # --- Bot Helper Functions ---
 
 
+def _is_admin(update: Update) -> bool:
+    """Checks if the user issuing the command is the configured admin."""
+    config = get_settings()
+    # Ensure the configured admin_id is a string for comparison
+    admin_id = str(config.telegram.admin_id) if config.telegram else None
+    user_id = str(update.effective_user.id)
+
+    if not admin_id or user_id != admin_id:
+        logging.warning(
+            f"Unauthorized command attempt from user ID {user_id} on command '{update.message.text}'."
+        )
+        return False
+    return True
+
+
 async def _queue_task(update: Update, company_name: str, task_type: TaskType):
     """A helper function to queue a task in the database and notify the user."""
     user = update.effective_user
@@ -64,7 +79,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "`/remove <TICKER>` - Removes a company from the daily scan.\n"
         "`/listdaily` - Shows all companies in the daily scan list.\n\n"
         "**Admin Commands:**\n"
-        "`/clearqueue` - Clears all uncompleted tasks."
+        "`/clearqueue` - Clears all uncompleted tasks.\n"
+        "`/triggerscreener` - Manually starts the undervalued stock screener.\n"
+        "`/triggerdaily` - Manually queues all stocks from the daily list."
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
@@ -204,18 +221,11 @@ async def clear_queue_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """(Admin-only) Clears all 'queued' and 'processing' tasks from the queue."""
-    config = get_settings()
-    # Ensure the configured chat_id is a string for comparison
-    admin_id = str(config.telegram.admin_id)
-    user_id = str(update.effective_user.id)
-
-    if not admin_id or user_id != admin_id:
-        logging.warning(
-            f"Unauthorized attempt to use /clearqueue from user ID {user_id}."
-        )
+    if not _is_admin(update):
         await update.message.reply_text("⛔️ Sorry, this is an admin-only command.")
         return
 
+    user_id = str(update.effective_user.id)
     try:
         with sqlite3.connect(DATABASE_PATH) as conn:
             cursor = conn.cursor()
@@ -236,6 +246,70 @@ async def clear_queue_command(
         await update.message.reply_text(
             "Sorry, there was a database error while clearing the queue."
         )
+
+
+async def trigger_screener_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """(Admin-only) Manually queues the undervalued screener task."""
+    if not _is_admin(update):
+        await update.message.reply_text("⛔️ Sorry, this is an admin-only command.")
+        return
+
+    try:
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO tasks (task_type, requested_by) VALUES (?, ?)",
+                (
+                    TaskType.UNDERVALUED_SCREENER,
+                    f"telegram_admin:{update.effective_user.id}",
+                ),
+            )
+            conn.commit()
+        logging.info(
+            f"Admin {update.effective_user.id} manually triggered the screener task."
+        )
+        await update.message.reply_text("✅ Undervalued screener task has been queued.")
+    except sqlite3.Error as e:
+        logging.error(
+            f"Database error during manual screener scheduling: {e}", exc_info=True
+        )
+        await update.message.reply_text(
+            "Sorry, there was a database error while queuing the screener."
+        )
+
+
+async def trigger_daily_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """(Admin-only) Manually queues monitoring tasks for all companies on the daily list."""
+    if not _is_admin(update):
+        await update.message.reply_text("⛔️ Sorry, this is an admin-only command.")
+        return
+
+    try:
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT company_name FROM daily_monitoring_list")
+            companies_to_monitor = [row[0] for row in cursor.fetchall()]
+            if not companies_to_monitor:
+                await update.message.reply_text(
+                    "The daily monitoring list is empty. Nothing to queue."
+                )
+                return
+            requested_by = f"telegram_admin:{update.effective_user.id}"
+            for company in companies_to_monitor:
+                cursor.execute(
+                    "INSERT INTO tasks (company_name, requested_by, task_type) VALUES (?, ?, ?)",
+                    (company, requested_by, TaskType.DAILY_MONITOR),
+                )
+            conn.commit()
+            logging.info(f"Admin {update.effective_user.id} manually triggered {len(companies_to_monitor)} daily tasks.")
+            await update.message.reply_text(f"✅ Successfully queued {len(companies_to_monitor)} daily monitoring tasks.")
+    except sqlite3.Error as e:
+        logging.error(f"Database error during manual daily task scheduling: {e}", exc_info=True)
+        await update.message.reply_text("Sorry, there was a database error while queuing daily tasks.")
 
 
 def main() -> None:
@@ -260,6 +334,10 @@ def main() -> None:
     application.add_handler(CommandHandler("remove", remove_daily_command))
     application.add_handler(CommandHandler("listdaily", list_daily_command))
     application.add_handler(CommandHandler("clearqueue", clear_queue_command))
+    application.add_handler(
+        CommandHandler("triggerscreener", trigger_screener_command)
+    )
+    application.add_handler(CommandHandler("triggerdaily", trigger_daily_command))
 
     logging.info("Telegram bot started and polling for messages...")
     # Run the bot until the user presses Ctrl-C

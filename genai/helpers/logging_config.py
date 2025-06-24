@@ -30,4 +30,7 @@ def setup_logging():
     file_handler.setFormatter(log_format)
     logger.addHandler(file_handler)
 
+    # Quieten noisy third-party loggers that spam INFO level.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     logging.info(f"Logging configured. Console: INFO, File: DEBUG -> '{log_filename}'")
