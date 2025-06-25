@@ -1,7 +1,7 @@
 from enum import Enum
 import os
 
-from genai.helpers.prompt_text import PROMPT_TEXT, PROMPT_TEXT_3, PROMPT_TEXT_5
+from genai.helpers.prompt_text import SCANNER_PROMPT, DEEPDIVE_PROMPT, TACTICAL_PROMPT
 
 # --- Application-Wide Constants ---
 DATABASE_PATH = os.path.join(os.getcwd(), 'genai', 'database', 'research_queue.db')
@@ -46,7 +46,7 @@ class TaskType(str, Enum):
     UNDERVALUED_SCREENER = 'undervalued_screener'
 
 TASK_PROMPT_MAP = {
-    TaskType.COMPANY_DEEP_DIVE: PROMPT_TEXT_3,
-    TaskType.DAILY_MONITOR: PROMPT_TEXT_5,
-    TaskType.UNDERVALUED_SCREENER: PROMPT_TEXT,
+    TaskType.COMPANY_DEEP_DIVE: DEEPDIVE_PROMPT,
+    TaskType.DAILY_MONITOR: TACTICAL_PROMPT,
+    TaskType.UNDERVALUED_SCREENER: SCANNER_PROMPT,
 }

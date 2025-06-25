@@ -23,7 +23,7 @@ from genai.helpers.config import Settings, get_settings
 from genai.helpers.google_api_helpers import get_drive_service
 from genai.helpers.helpers import save_debug_screenshot
 from genai.helpers.logging_config import setup_logging
-from genai.helpers.prompt_text import PROMPT_TEXT_2
+from genai.helpers.prompt_text import EXTRACT_TICKERS_PROMPT
 from genai.workflow import (
     ResearchJob,
     enter_prompt_and_submit,
@@ -145,7 +145,7 @@ def process_completed_screener(
         responses_before = len(
             driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
         )
-        enter_prompt_and_submit(driver, PROMPT_TEXT_2)
+        enter_prompt_and_submit(driver, EXTRACT_TICKERS_PROMPT)
         # Use a shorter timeout for this simple extraction
         company_list = get_response(driver, responses_before, is_csv=True, timeout=120)
 

@@ -24,7 +24,7 @@ from genai.helpers.google_api_helpers import (
     share_google_doc_publicly,
 )
 from genai.helpers.notifications import send_report_to_telegram
-from genai.helpers.prompt_text import PROMPT_BUY_RANGE_CHECK, PROMPT_TEXT_4
+from genai.helpers.prompt_text import PROMPT_BUY_RANGE_CHECK, FOLLOWUP_DEEPDIVE_PROMPT
 from genai.helpers.helpers import save_debug_screenshot
 from genai.constants import (
     DATABASE_PATH,
@@ -502,7 +502,7 @@ def process_completed_job(
         res_before_summary = len(
             driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
         )
-        enter_prompt_and_submit(driver, PROMPT_TEXT_4)
+        enter_prompt_and_submit(driver, FOLLOWUP_DEEPDIVE_PROMPT)
         summary_text = get_response(driver, res_before_summary, is_csv=False)
         logging.info(f"Summary: {summary_text}")
 

@@ -1,4 +1,4 @@
-PROMPT_TEXT = """Act as a senior stock specialist preparing a formal presentation for a highly critical investment board.
+SCANNER_PROMPT = """Act as a senior stock specialist preparing a formal presentation for a highly critical investment board.
 Your task is to identify and present a compelling investment thesis on one to two undervalued stocks from the US (NYSE, NASDAQ) or Hong Kong (SEHK) markets. Your analysis must be original, deeply analytical, and not a mere aggregation of analyst consensus.
 The primary criteria are that these stocks possess significant short-term rally potential (3-6 months) while also having fundamentals, assets, or a strategic position strong enough to justify a long-term hold (3-5+ years) without the necessity of a stop-loss.
 //-- STRICT CRITERIA FOR STOCK SELECTION --//
@@ -45,14 +45,14 @@ Every investment has risks. Identify 2-3 primary risks to your thesis (e.g., exe
 Buy Range: Determine a precise price range for initiating a position (e.g., "$50.00 - $55.00").
 Price Target / Exit Range: Define a realistic price target based on your valuation analysis for taking profits or re-evaluating the position post-catalyst (e.g., "$75.00 - $80.00").
 """
-PROMPT_TEXT_2 = """Analyze the preceding report and extract the main stock tickers being analyzed and its corresponding primary stock exchange.
+EXTRACT_TICKERS_PROMPT = """Analyze the preceding report and extract the main stock tickers being analyzed and its corresponding primary stock exchange.
 Your response must contain ONLY a comma-separated list of exchange-ticker pairs using the format EXCHANGE:TICKER.
 If the exchange is not explicitly mentioned for a ticker, use the ticker's main listing exchange. 
 Do not include any other text, headers, or explanations.
 Example format: NASDAQ:AAPL, NYSE:BRK.A, SEHK:9988, NASDAQ:NVDA
 """
 
-PROMPT_TEXT_3 = """You are a seasoned equity research analyst preparing a comprehensive investment thesis for your firm's investment board. Your analysis should be objective, data-driven, and culminate in a clear "Buy," "Sell," or "Hold" recommendation for the stock.
+DEEPDIVE_PROMPT = """You are a seasoned equity research analyst preparing a comprehensive investment thesis for your firm's investment board. Your analysis should be objective, data-driven, and culminate in a clear "Buy," "Sell," or "Hold" recommendation for the stock.
 Your presentation must be structured as follows:
 1. Executive Summary:
 Provide a concise overview of the company.
@@ -84,7 +84,7 @@ Your analysis should be based solely on publicly available information up to the
 
 The stock ticker to be analyzed is """
 
-PROMPT_TEXT_4 = """From the detailed report above, extract the key information and format your response *exactly* as follows. Do not add any other text, headers, or explanations. Fill in the data based on the report.
+FOLLOWUP_DEEPDIVE_PROMPT = """From the detailed report above, extract the key information and format your response *exactly* as follows. Do not add any other text, headers, or explanations. Fill in the data based on the report.
 
 **Current Price:** [The current price from the report]
 **Investment Direction:** [The investment direction from the report (e.g., Buy, Hold, Sell)]
@@ -94,7 +94,7 @@ PROMPT_TEXT_4 = """From the detailed report above, extract the key information a
 [A concise, summary of the investment thesis from the report, suitable for a message not exceeding 4000 characters.]
 """
 
-PROMPT_TEXT_5 = """You are a tactical execution analyst. A Google Doc containing a full, pre-approved investment thesis for a stock has been attached to this session. Your task is to use that document as context to determine if today is an opportune moment to initiate a position/adjust a position held.
+TACTICAL_PROMPT = """You are a tactical execution analyst. A Google Doc containing a full, pre-approved investment thesis for a stock has been attached to this session. Your task is to use that document as context to determine if today is an opportune moment to initiate a position/adjust a position held.
 
 //-- ANALYSIS PROTOCOL --//
 
