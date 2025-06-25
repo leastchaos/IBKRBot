@@ -73,6 +73,14 @@ def send_report_to_telegram(
                 f"Failed to send Telegram message to chat_id {chat_id}.", exc_info=True
             )
             all_successful = False
+            continue
+        except Exception:
+            logging.error(
+                f"An unexpected error occurred while sending Telegram message to chat_id {chat_id}.",
+                exc_info=True,
+            )
+            all_successful = False
+            continue
 
     if all_successful:
         logging.info("All Telegram notifications sent successfully.")
