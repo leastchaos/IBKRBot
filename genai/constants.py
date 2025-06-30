@@ -1,7 +1,7 @@
 from enum import Enum
 import os
 
-from genai.helpers.prompt_text import SCANNER_PROMPT, DEEPDIVE_PROMPT, TACTICAL_PROMPT
+from genai.helpers.prompt_text import PORTFOLIO_REVIEW_PROMPT, SCANNER_PROMPT, DEEPDIVE_PROMPT, TACTICAL_PROMPT
 
 # --- Application-Wide Constants ---
 DATABASE_PATH = os.path.join(os.getcwd(), 'genai', 'database', 'research_queue.db')
@@ -12,6 +12,7 @@ MAX_ACTIVE_RESEARCH_JOBS = 2
 MONITORING_INTERVAL_SECONDS = 15
 MAX_RETRIES = 3
 TELEGRAM_USER_PREFIX = "telegram:"
+JOB_TIMEOUT_SECONDS = 45 * 60  # 30 minutes
 
 # --- NEW: Google API Constants ---
 # The scopes define the level of access the script requests.
@@ -31,6 +32,9 @@ EXPORT_TO_DOCS_BUTTON_XPATH = "//button[contains(., 'Export to Docs')]"
 RESPONSE_CONTENT_CSS = "div.response-content"
 GENERATING_INDICATOR_CSS = "progress.mat-mdc-linear-progress"
 
+# --- Error Recovery ---
+RECOVERABLE_ERROR_PHRASE = "I encountered an error doing what you asked. Could you try again?"
+
 # --- NEW: Selectors for attaching Google Drive files ---
 # NOTE: These are placeholder selectors. You will need to inspect the Gemini
 # web UI to find the correct values for these if they stop working.
@@ -44,9 +48,11 @@ class TaskType(str, Enum):
     COMPANY_DEEP_DIVE = 'company_deep_dive'
     DAILY_MONITOR = 'daily_monitor'
     UNDERVALUED_SCREENER = 'undervalued_screener'
+    PORTFOLIO_REVIEW = 'portfolio_review'
 
 TASK_PROMPT_MAP = {
     TaskType.COMPANY_DEEP_DIVE: DEEPDIVE_PROMPT,
     TaskType.DAILY_MONITOR: TACTICAL_PROMPT,
     TaskType.UNDERVALUED_SCREENER: SCANNER_PROMPT,
+    TaskType.PORTFOLIO_REVIEW: PORTFOLIO_REVIEW_PROMPT,
 }

@@ -11,12 +11,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from genai.constants import (
     DATABASE_PATH,
+    JOB_TIMEOUT_SECONDS,
     MAX_ACTIVE_RESEARCH_JOBS,
     MAX_RETRIES,
     MONITORING_INTERVAL_SECONDS,
     RESPONSE_CONTENT_CSS,
     SHARE_EXPORT_BUTTON_XPATH,
     TASK_PROMPT_MAP,
+    RECOVERABLE_ERROR_PHRASE,
     TaskType,
 )
 from genai.helpers.config import Settings, get_settings
@@ -32,6 +34,7 @@ from genai.workflow import (
     navigate_to_url,
     perform_daily_monitor_research,
     perform_deep_research,
+    perform_portfolio_review,
     process_completed_job,
 )
 
@@ -188,6 +191,7 @@ def launch_research_task(
     company_name: str | None,
     requested_by: str | None,
     task_type: str,
+    config: Settings | None = None,
 ) -> ResearchJob | None:
     """
     Launches a research task in a new tab using a specified prompt.
@@ -270,6 +274,8 @@ def launch_research_task(
             prompt = f"{prompt_template} {company_name}."
             success = perform_deep_research(driver, prompt)
 
+        elif task_type == TaskType.PORTFOLIO_REVIEW:
+            success = perform_portfolio_review(driver, prompt_template, config.drive.portfolio_sheet_url)
         else:
             raise ValueError(f"Unhandled task type '{task_type}'")
 
@@ -279,11 +285,12 @@ def launch_research_task(
         new_job_details: ResearchJob = {
             "task_id": task_id,
             "handle": new_handle,
-            "company_name": company_name or "Screener",  # Use a placeholder
+            "company_name": company_name or "Not Required",
             "status": "processing",
             "started_at": time.time(),
             "requested_by": requested_by,
             "task_type": task_type,
+            "error_recovery_attempted": False,
         }
         return new_job_details
 
@@ -313,25 +320,50 @@ def check_and_process_active_jobs(
     for task_id, job in list(active_jobs.items()):
         try:
             driver.switch_to.window(job["handle"])
-            if not driver.find_elements(By.XPATH, SHARE_EXPORT_BUTTON_XPATH):
-                continue  # Guard clause: If not complete, skip to the next job.
 
-            # --- NEW: Route to the correct processing function based on task type ---
+            # If the job is NOT complete (export button not found), check for issues.
+            if not driver.find_elements(By.XPATH, SHARE_EXPORT_BUTTON_XPATH):
+                # 1. Check for timeout
+                if time.time() - job["started_at"] > JOB_TIMEOUT_SECONDS:
+                    logging.warning(
+                        f"Task {task_id} for '{job['company_name']}' has timed out after "
+                        f"{JOB_TIMEOUT_SECONDS / 60:.0f} minutes. Marking as failed."
+                    )
+                    with sqlite3.connect(DATABASE_PATH) as conn:
+                        handle_task_failure(conn, task_id, "Job timed out")
+                    completed_task_ids.append(task_id)
+                    continue  # Move to the next job
+
+                # 2. Check for a recoverable error message from Gemini
+                if not job.get("error_recovery_attempted"):
+                    try:
+                        all_responses = driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
+                        if all_responses and RECOVERABLE_ERROR_PHRASE in all_responses[-1].text:
+                            logging.warning(
+                                f"Recoverable error found for task {task_id}. "
+                                "Attempting to continue research..."
+                            )
+                            job["error_recovery_attempted"] = True
+                            enter_prompt_and_submit(driver, "continue research")
+                    except Exception as e:
+                        logging.warning(f"Could not check for recoverable error on task {task_id}: {e}")
+
+                # If no issues, the job is just still running. Continue to the next job.
+                continue
+
+            # If we reach here, the job IS complete. Process it.
+            logging.info(f"Export button found for task {task_id}. Starting post-processing...")
+            final_status, results = ("error", {})
             if job.get("task_type") == TaskType.UNDERVALUED_SCREENER:
                 final_status, results = process_completed_screener(driver, job)
             else:
-                final_status, results = process_completed_job(
-                    driver, job, config, service
-                )
+                final_status, results = process_completed_job(driver, job, config, service)
 
             with sqlite3.connect(DATABASE_PATH) as conn:
                 if final_status == "completed":
                     update_task_status(conn, task_id, "completed")
-                    # Only update results if they exist (screener returns an empty dict)
                     if results.get("report_url"):
-                        update_task_result(
-                            conn, task_id, results["report_url"], results["summary"]
-                        )
+                        update_task_result(conn, task_id, results["report_url"], results["summary"])
                 else:  # final_status is 'error'
                     error_msg = results.get("error_message", "Post-processing failed.")
                     handle_task_failure(conn, task_id, error_msg)
@@ -339,9 +371,7 @@ def check_and_process_active_jobs(
             completed_task_ids.append(task_id)
 
         except Exception as e:
-            error_str = (
-                f"Worker failed while checking job status: {e.__class__.__name__}"
-            )
+            error_str = f"Worker failed while checking job status: {e.__class__.__name__}"
             logging.error(
                 f"Error checking active job for task ID {task_id}. {error_str}",
                 exc_info=True,
@@ -376,7 +406,7 @@ def cleanup_finished_jobs(
             driver.switch_to.window(original_tab)
 
 
-def dispatch_new_task(driver: WebDriver, num_active_jobs: int) -> ResearchJob | None:
+def dispatch_new_task(driver: WebDriver, num_active_jobs: int, config: Settings) -> ResearchJob | None:
     """Checks for queued tasks and dispatches them if slots are available."""
     if num_active_jobs >= MAX_ACTIVE_RESEARCH_JOBS:
         return  # Guard clause: Exit if no slots are free.
@@ -404,7 +434,7 @@ def dispatch_new_task(driver: WebDriver, num_active_jobs: int) -> ResearchJob | 
                 f"Dispatching task {task_id} ({task_type}) with selected prompt."
             )
             new_job = launch_research_task(
-                driver, task_id, company_name, requested_by, task_type
+                driver, task_id, company_name, requested_by, task_type, config
             )
             if not new_job:
                 handle_task_failure(
@@ -454,7 +484,7 @@ def main(headless: bool = True) -> None:
             if completed_ids:
                 cleanup_finished_jobs(driver, active_jobs, completed_ids, original_tab)
             driver.switch_to.window(original_tab)
-            new_job = dispatch_new_task(driver, len(active_jobs))
+            new_job = dispatch_new_task(driver, len(active_jobs), config)
             if new_job:
                 active_jobs[new_job["task_id"]] = new_job
             driver.switch_to.window(original_tab)
@@ -479,4 +509,4 @@ def main(headless: bool = True) -> None:
 
 
 if __name__ == "__main__":
-    main(headless=True)
+    main(headless=False)

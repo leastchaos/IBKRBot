@@ -12,8 +12,9 @@ class ChromeSettings:
     """Configuration specific to the Selenium Chrome driver."""
     user_data_dir: str
     profile_directory: str
+    download_dir: str
     chrome_driver_path: str | None = None
-    download_dir: str | None = None
+
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,8 @@ class TelegramSettings:
 class DriveSettings:
     """Configuration for Google Drive integration."""
     folder_id: str | None = None
+    portfolio_sheet_url: str | None = None
+    
 
 
 @dataclass(frozen=True)

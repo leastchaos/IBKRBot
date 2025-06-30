@@ -140,3 +140,153 @@ Structure your final response *exactly* as follows, filling in the data from you
 
 
 PROMPT_BUY_RANGE_CHECK = "Based on the full report above, is the current stock price inside the 'BUY' range you identified? Please answer with only 'YES' or 'NO'."
+
+PORTFOLIO_REVIEW_PROMPT = """For each unique Symbol (stock ticker) identified in the provided CSV data:
+
+Part A: Comprehensive Short-Term Investment Thesis (Deep Dive)
+
+Act as a seasoned equity research analyst preparing a comprehensive investment thesis for your firm's investment board, focusing on a short-term (1-3 month) outlook. Your analysis should be objective, data-driven, and culminate in a clear "Buy," "Sell," "Hold," or "Options Strategy" recommendation for the stock.
+
+Your presentation for each stock must be structured as follows:
+
+* Executive Summary:
+
+* Provide a concise overview of the company.
+
+* State your investment thesis (Buy/Sell/Hold/Options Strategy).
+
+* Summarize the key drivers for your recommendation.
+
+* Specify your proposed short-term price target and the recommended range for entry or exit. There should be a sufficient margin of safety for entry.
+
+* Company Overview:
+
+* Briefly describe the company's business model, its products or services, and the industry it operates in.
+
+* Outline its key competitive advantages and market position relevant to a short-term perspective.
+
+* Investment Thesis & Key Drivers:
+
+* For a "Buy" recommendation: Detail the primary catalysts for short-term growth, such as immediate market trends, positive news, or short-term undervaluation.
+
+* For a "Sell" recommendation: Detail the primary red flags, such as immediate negative news, weakening technicals, or overvaluation in the short term.
+
+* For an "Options Strategy" recommendation: Explain why options are preferred over direct stock action (e.g., to generate income, reduce risk, or leverage a specific price movement with limited capital). Suggest specific option strategies (e.g., covered call, cash-secured put, vertical spread, iron condor) and the rationale for their use in the short term.
+
+* Support your arguments with recent (past 1-3 months) news, relevant financial data points from the provided CSV (e.g., MarketPrice, AvgCost, PositionType), and market analysis. You may infer general market trends and sector performance to strengthen your arguments. Mention if current options positions (from CSV) align with or contradict your thesis.
+
+* Fundamental Analysis (Short-Term Focus):
+
+* Provide a brief overview of the company's current financial health, focusing on metrics that might impact short-term price movements (e.g., recent earnings surprises, significant changes in profitability trends, liquidity).
+
+* Discuss the company's current valuation based on MarketPrice and UnderlyingPrice (if applicable), considering if it appears attractive or overextended for a short-term trade.
+
+* Technical Analysis (Short-Term Focus):
+
+* Analyze the stock's recent price action (past 1-3 months) and relevant short-term chart patterns.
+
+* Identify key immediate support and resistance levels.
+
+* Mention relevant short-term technical indicators (e.g., daily moving averages, RSI, MACD) and what they suggest about the stock's momentum and potential for immediate price movement.
+
+* Risk Assessment (Short-Term Focus):
+
+* Identify and explain the key short-term risks to your investment thesis. These could include immediate market volatility, upcoming company-specific events, or shifts in investor sentiment.
+
+* Conclusion & Initial Recommendation:
+
+* Reiterate your investment thesis (Buy/Sell/Hold/Options Strategy).
+
+* Provide a specific short-term price target.
+
+* Define a clear price range for entering a long position or exiting an existing position.
+
+* For options strategies, suggest a general outline of the recommended strategy (e.g., "Consider selling out-of-the-money calls at X strike expiring in Y months").
+
+Part B: Tactical Execution Analysis (Today's Date: June 28, 2025)
+
+Using the comprehensive investment thesis generated in Part A for each stock as context, determine if today (June 28, 2025) is an opportune moment to initiate a position, adjust an existing position, or execute the recommended options strategy.
+
+Analysis Protocol for Part B:
+
+* Price & Range Check:
+
+* Confirm the MarketPrice from the CSV (this is your "current stock price" for today).
+
+* State if the current price is within, below, or above the recommended range for entry or exit you established in Part A. If it is significantly above/below your target range for a buy/sell, conclude that it is not an ideal entry/exit point today.
+
+* Material News Scan:
+
+* Consider if any significant hypothetical company-specific news (e.g., recent earnings reports, major product announcements, regulatory changes) between the date of this analysis (June 28, 2025) and your assumed report generation (today) would fundamentally challenge the Key Drivers from Part A. Since you do not have real-time news access, you should state that a real-time news scan would be crucial here and hypothetically consider the impact of potential good/bad news.
+
+* Short-Term Technical Assessment (Today's Context):
+
+* Support/Resistance: Refer to the key short-term support and resistance levels identified in Part A. Given today's MarketPrice, assess if the stock is approaching or respecting these levels.
+
+* Momentum Indicators: Based on the MarketPrice and implied trends, comment on hypothetical short-term momentum (e.g., "If RSI were near X, it would suggest..." or "Given the flat price action, MACD would likely be consolidating"). Acknowledge that real-time indicator values are unavailable, but infer based on price behavior.
+
+* Volume Analysis: Briefly comment on the general significance of volume for confirming price movements in a short-term context.
+
+* Market & Sector Context (Today's Context):
+
+* Briefly describe hypothetical general market sentiment for today (June 28, 2025) and how the stock's specific sector might be performing based on recent broad trends. (e.g., "Assuming a generally bullish market today, this stock might perform well").
+
+Required Output for Each Unique Stock (Combination of Parts A & B):
+
+Please provide the output for each unique Symbol in the following structured format.
+
+[STOCK SYMBOL] - Integrated Short-Term Analysis
+
+Part A: Comprehensive Short-Term Investment Thesis
+
+* Executive Summary:
+
+* Company Overview: [Concise overview]
+
+* Investment Thesis: [Buy/Sell/Hold/Options Strategy]
+
+* Key Drivers: [Summary of main reasons]
+
+* Proposed Short-Term Price Target: $[XX.XX]
+
+* Recommended Entry/Exit Range: $[YY.YY] - $[ZZ.ZZ] (with margin of safety considered)
+
+* Company Overview:
+
+* [Brief description of business model, competitive advantages for short-term]
+
+* Investment Thesis & Key Drivers:
+
+* [Detailed explanation with short-term catalysts/red flags/options rationale. Reference relevant CSV data (e.g., MarketPrice, AvgCost, PositionType, IV, Delta, Theta, TimeValue).]
+
+* Fundamental Analysis (Short-Term Focus):
+
+* [Overview of financial health impacting short-term, valuation relative to market price.]
+
+* Technical Analysis (Short-Term Focus):
+
+* [Recent price action, key immediate support/resistance, implied momentum from indicators.]
+
+* Risk Assessment (Short-Term Focus):
+
+* [Key short-term risks.]
+
+* Conclusion & Initial Recommendation:
+
+* Reiterate Thesis: [Buy/Sell/Hold/Options Strategy]
+
+* Specific Short-Term Price Target: $[XX.XX]
+
+* Entry/Exit Price Range: $[YY.YY] - $[ZZ.ZZ]
+
+Part B: Tactical Execution Analysis (Today's Date: June 28, 2025)
+
+* Ticker: [STOCK SYMBOL]
+
+* Current Price (from CSV): $[MarketPrice] (from the CSV data row for this symbol)
+
+* Status vs. Recommended Range: [e.g., Within Recommended Range / Below Recommended Range / Above Recommended Range]
+
+* Tactical Recommendation: [Choose ONE: HOLD OFF, MONITOR FOR ENTRY/EXIT, INITIATE/INCREASE POSITION, REDUCE POSITION, Execute [Specific Option Strategy Type]]
+
+* Key Justification (for tactical recommendation): [A concise summary incorporating price check, hypothetical news impact, current technical posture relative to your thesis, and hypothetical market/sector context.]"""

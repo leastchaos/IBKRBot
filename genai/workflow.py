@@ -55,7 +55,8 @@ class ResearchJob(TypedDict):
     company_name: str
     status: str
     started_at: float
-    requested_by: str | None  # <-- ADD THIS FIELD
+    requested_by: str | None
+    error_recovery_attempted: bool
     task_type: str
 
 
@@ -290,6 +291,24 @@ def perform_daily_monitor_research(
             exc_info=True,
         )
         save_debug_screenshot(driver, "daily_monitor_error")
+        return False
+
+
+def perform_portfolio_review(driver: WebDriver, prompt: str, sheet_url: str) -> bool:
+    try:
+        logging.info("Starting portfolio review workflow.")
+        _click_deep_research_button(driver)
+        _attach_drive_file(driver, sheet_url)
+        enter_prompt_and_submit(driver, prompt)
+        _click_start_research_button(driver)
+        logging.info("Portfolio review prompt submitted for analysis.")
+        return True
+
+    except Exception:
+        logging.error(
+            "An error occurred during the portfolio review workflow.", exc_info=True
+        )
+        save_debug_screenshot(driver, "portfolio_review_error")
         return False
 
 

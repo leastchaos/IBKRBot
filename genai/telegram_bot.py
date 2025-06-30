@@ -3,8 +3,8 @@ import sqlite3
 import os
 
 # --- Third-party Imports ---
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 
 # --- Internal Project Imports ---
 from genai.helpers.config import get_settings
@@ -70,20 +70,33 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Sends a welcome message with instructions when the /start command is issued."""
     welcome_text = (
         "Hello! I am the Gemini Research Bot.\n\n"
-        "**Ad-hoc Research:**\n"
-        "Use `/research <TICKER>` for a full deep-dive analysis.\n"
-        "Use `/tactical <TICKER>` for a tactical update on a monitored stock.\n"
-        "Example: `/research NASDAQ:NVDA`\n\n"
-        "**Manage Monitoring List:**\n"
-        "`/add <TICKER>` - Adds a company to the daily scan.\n"
-        "`/remove <TICKER>` - Removes a company from the daily scan.\n"
-        "`/listdaily` - Shows all companies in the daily scan list.\n\n"
-        "**Admin Commands:**\n"
-        "`/clearqueue` - Clears all uncompleted tasks.\n"
-        "`/triggerscreener` - Manually starts the undervalued stock screener.\n"
-        "`/triggerdaily` - Manually queues all stocks from the daily list."
+        "You can use the buttons below for common actions or type commands directly.\n\n"
+        "**Commands that require a ticker:**\n"
+        "`/research <TICKER>` - Full deep-dive analysis.\n"
+        "`/tactical <TICKER>` - Tactical update.\n"
+        "`/add <TICKER>` - Add to daily monitoring.\n"
+        "`/remove <TICKER>` - Remove from daily monitoring."
     )
-    await update.message.reply_text(welcome_text, parse_mode="Markdown")
+
+    keyboard = [
+        [InlineKeyboardButton("List Monitored Stocks", callback_data="list_daily")],
+    ]
+
+    if _is_admin(update):
+        admin_keyboard = [
+            [
+                InlineKeyboardButton("Trigger Screener", callback_data="trigger_screener"),
+                InlineKeyboardButton("Trigger Daily", callback_data="trigger_daily"),
+                InlineKeyboardButton("Trigger Portfolio Review", callback_data="trigger_portfolio"),
+            ],
+            [InlineKeyboardButton("⚠️ Clear Queue", callback_data="clear_queue")],
+        ]
+        keyboard.extend(admin_keyboard)
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        welcome_text, parse_mode="Markdown", reply_markup=reply_markup
+    )
 
 
 async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -111,6 +124,7 @@ async def tactical_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     await _queue_task(update, company_name, TaskType.DAILY_MONITOR)
+
 
 
 async def add_daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -193,6 +207,7 @@ async def list_daily_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """Lists all companies currently in the daily monitoring list."""
+    message_text = ""
     try:
         with sqlite3.connect(DATABASE_PATH) as conn:
             cursor = conn.cursor()
@@ -202,115 +217,189 @@ async def list_daily_command(
             rows = cursor.fetchall()
 
             if not rows:
-                await update.message.reply_text(
-                    "The daily monitoring list is currently empty. Use `/add <TICKER>` to add one."
-                )
-                return
-
-            # Format the list for the reply message
-            company_list = "\n".join([f"• `{row[0]}`" for row in rows])
-            message = f"**Daily Monitoring List:**\n{company_list}"
-            await update.message.reply_text(message, parse_mode="Markdown")
+                message_text = "The daily monitoring list is currently empty. Use `/add <TICKER>` to add one."
+            else:
+                company_list = "\n".join([f"• `{row[0]}`" for row in rows])
+                message_text = f"**Daily Monitoring List:**\n{company_list}"
 
     except sqlite3.Error as e:
         logging.error(f"Database error listing daily companies: {e}")
-        await update.message.reply_text("Sorry, there was a database error.")
+        message_text = "Sorry, there was a database error."
+
+    # Reply or edit the message depending on how the command was triggered
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=message_text, parse_mode="Markdown"
+        )
+    elif update.message:
+        await update.message.reply_text(text=message_text, parse_mode="Markdown")
 
 
 async def clear_queue_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """(Admin-only) Clears all 'queued' and 'processing' tasks from the queue."""
+    message_text = ""
     if not _is_admin(update):
-        await update.message.reply_text("⛔️ Sorry, this is an admin-only command.")
-        return
+        message_text = "⛔️ Sorry, this is an admin-only command."
+    else:
+        user_id = str(update.effective_user.id)
+        try:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM tasks WHERE status IN ('queued', 'processing')"
+                )
+                tasks_cleared = cursor.rowcount
+                conn.commit()
 
-    user_id = str(update.effective_user.id)
-    try:
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            cursor = conn.cursor()
-            # Clear tasks that are waiting or currently running
-            cursor.execute("DELETE FROM tasks WHERE status IN ('queued', 'processing')")
-            tasks_cleared = cursor.rowcount
-            conn.commit()
+                logging.info(
+                    f"Admin {user_id} cleared the task queue. {tasks_cleared} tasks removed."
+                )
+                message_text = f"✅ Queue cleared. {tasks_cleared} pending/processing tasks were removed."
 
+        except sqlite3.Error as e:
+            logging.error(f"Database error during queue clearing: {e}", exc_info=True)
+            message_text = "Sorry, there was a database error while clearing the queue."
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text=message_text)
+    elif update.message:
+        await update.message.reply_text(text=message_text)
+
+async def trigger_portfolio_review_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """(Admin-only) Queues a new 'portfolio_review' task from a user request."""
+    message_text = ""
+    if not _is_admin(update):
+        message_text = "⛔️ Sorry, this is an admin-only command."
+    else:
+        try:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO tasks (task_type, requested_by) VALUES (?, ?)",
+                    (
+                        TaskType.PORTFOLIO_REVIEW,
+                        f"telegram_admin:{update.effective_user.id}",
+                    ),
+                )
+                conn.commit()
             logging.info(
-                f"Admin {user_id} cleared the task queue. {tasks_cleared} tasks removed."
+                f"Admin {update.effective_user.id} manually triggered the 'portfolio_review' task."
             )
-            await update.message.reply_text(
-                f"✅ Queue cleared. {tasks_cleared} pending/processing tasks were removed."
+            message_text = "✅ The 'portfolio_review' task has been queued."
+        except sqlite3.Error as e:
+            logging.error(
+                f"Database error during 'portfolio_review' task scheduling: {e}",
+                exc_info=True,
             )
+            message_text = "Sorry, there was a database error while queuing the 'portfolio_review' task."
 
-    except sqlite3.Error as e:
-        logging.error(f"Database error during queue clearing: {e}", exc_info=True)
-        await update.message.reply_text(
-            "Sorry, there was a database error while clearing the queue."
-        )
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text=message_text)
+    elif update.message:
+        await update.message.reply_text(text=message_text)
+
 
 
 async def trigger_screener_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """(Admin-only) Manually queues the undervalued screener task."""
+    message_text = ""
     if not _is_admin(update):
-        await update.message.reply_text("⛔️ Sorry, this is an admin-only command.")
-        return
-
-    try:
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO tasks (task_type, requested_by) VALUES (?, ?)",
-                (
-                    TaskType.UNDERVALUED_SCREENER,
-                    f"telegram_admin:{update.effective_user.id}",
-                ),
+        message_text = "⛔️ Sorry, this is an admin-only command."
+    else:
+        try:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO tasks (task_type, requested_by) VALUES (?, ?)",
+                    (
+                        TaskType.UNDERVALUED_SCREENER,
+                        f"telegram_admin:{update.effective_user.id}",
+                    ),
+                )
+                conn.commit()
+            logging.info(
+                f"Admin {update.effective_user.id} manually triggered the screener task."
             )
-            conn.commit()
-        logging.info(
-            f"Admin {update.effective_user.id} manually triggered the screener task."
-        )
-        await update.message.reply_text("✅ Undervalued screener task has been queued.")
-    except sqlite3.Error as e:
-        logging.error(
-            f"Database error during manual screener scheduling: {e}", exc_info=True
-        )
-        await update.message.reply_text(
-            "Sorry, there was a database error while queuing the screener."
-        )
+            message_text = "✅ Undervalued screener task has been queued."
+        except sqlite3.Error as e:
+            logging.error(
+                f"Database error during manual screener scheduling: {e}",
+                exc_info=True,
+            )
+            message_text = "Sorry, there was a database error while queuing the screener."
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text=message_text)
+    elif update.message:
+        await update.message.reply_text(text=message_text)
 
 
 async def trigger_daily_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """(Admin-only) Manually queues monitoring tasks for all companies on the daily list."""
+    message_text = ""
     if not _is_admin(update):
-        await update.message.reply_text("⛔️ Sorry, this is an admin-only command.")
-        return
+        message_text = "⛔️ Sorry, this is an admin-only command."
+    else:
+        try:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT company_name FROM daily_monitoring_list")
+                companies_to_monitor = [row[0] for row in cursor.fetchall()]
+                if not companies_to_monitor:
+                    message_text = "The daily monitoring list is empty. Nothing to queue."
+                else:
+                    requested_by = f"telegram_admin:{update.effective_user.id}"
+                    for company in companies_to_monitor:
+                        cursor.execute(
+                            "INSERT INTO tasks (company_name, requested_by, task_type) VALUES (?, ?, ?)",
+                            (company, requested_by, TaskType.DAILY_MONITOR),
+                        )
+                    conn.commit()
+                    logging.info(
+                        f"Admin {update.effective_user.id} manually triggered {len(companies_to_monitor)} daily tasks."
+                    )
+                    message_text = f"✅ Successfully queued {len(companies_to_monitor)} daily monitoring tasks."
+        except sqlite3.Error as e:
+            logging.error(
+                f"Database error during manual daily task scheduling: {e}",
+                exc_info=True,
+            )
+            message_text = "Sorry, there was a database error while queuing daily tasks."
 
-    try:
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT company_name FROM daily_monitoring_list")
-            companies_to_monitor = [row[0] for row in cursor.fetchall()]
-            if not companies_to_monitor:
-                await update.message.reply_text(
-                    "The daily monitoring list is empty. Nothing to queue."
-                )
-                return
-            requested_by = f"telegram_admin:{update.effective_user.id}"
-            for company in companies_to_monitor:
-                cursor.execute(
-                    "INSERT INTO tasks (company_name, requested_by, task_type) VALUES (?, ?, ?)",
-                    (company, requested_by, TaskType.DAILY_MONITOR),
-                )
-            conn.commit()
-            logging.info(f"Admin {update.effective_user.id} manually triggered {len(companies_to_monitor)} daily tasks.")
-            await update.message.reply_text(f"✅ Successfully queued {len(companies_to_monitor)} daily monitoring tasks.")
-    except sqlite3.Error as e:
-        logging.error(f"Database error during manual daily task scheduling: {e}", exc_info=True)
-        await update.message.reply_text("Sorry, there was a database error while queuing daily tasks.")
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text=message_text)
+    elif update.message:
+        await update.message.reply_text(text=message_text)
 
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Parses the CallbackQuery and runs the appropriate command."""
+    query = update.callback_query
+    # Acknowledge the button press to remove the "loading" state on the user's screen
+    await query.answer()
+
+    command = query.data
+
+    # Route the callback data to the appropriate command function
+    if command == "list_daily":
+        await list_daily_command(update, context)
+    elif command == "clear_queue":
+        await clear_queue_command(update, context)
+    elif command == "trigger_screener":
+        await trigger_screener_command(update, context)
+    elif command == "trigger_daily":
+        await trigger_daily_command(update, context)
+    elif command == "trigger_portfolio":
+        await trigger_portfolio_review_command(update, context)
+    else:
+        # This can be used to update the message if the button is no longer valid
+        await query.edit_message_text(text=f"Action '{command}' is not implemented.")
 
 def main() -> None:
     """Starts the bot and registers all command handlers."""
@@ -334,6 +423,8 @@ def main() -> None:
     application.add_handler(CommandHandler("remove", remove_daily_command))
     application.add_handler(CommandHandler("listdaily", list_daily_command))
     application.add_handler(CommandHandler("clearqueue", clear_queue_command))
+    application.add_handler(CommandHandler("triggerportfolio", trigger_portfolio_review_command))
+    application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(
         CommandHandler("triggerscreener", trigger_screener_command)
     )
