@@ -19,6 +19,7 @@ from genai.constants import (
     SHARE_EXPORT_BUTTON_XPATH,
     TASK_PROMPT_MAP,
     RECOVERABLE_ERROR_PHRASE,
+    SOMETHING_WENT_WRONG_RESPONSE,
     TaskType,
 )
 from genai.helpers.config import Settings, get_settings
@@ -105,6 +106,7 @@ def get_latest_report_info(
         return None
     return result
 
+
 def get_next_queued_task(conn: sqlite3.Connection) -> tuple[int, str, str, str] | None:
     cursor = conn.cursor()
     cursor.execute(
@@ -135,9 +137,7 @@ def update_task_result(
     conn.commit()
 
 
-def process_completed_screener(
-    driver: WebDriver, job: ResearchJob
-) -> tuple[str, dict]:
+def process_completed_screener(driver: WebDriver, job: ResearchJob) -> tuple[str, dict]:
     """
     Processes a completed screener job by extracting company names and queuing new tasks.
     """
@@ -270,12 +270,17 @@ def launch_research_task(
             prompt = prompt_template
             success = perform_deep_research(driver, prompt)
 
-        elif task_type == TaskType.COMPANY_DEEP_DIVE:
+        elif task_type in [
+            TaskType.COMPANY_DEEP_DIVE,
+            TaskType.SHORT_COMPANY_DEEP_DIVE,
+        ]:
             prompt = f"{prompt_template} {company_name}."
             success = perform_deep_research(driver, prompt)
 
         elif task_type == TaskType.PORTFOLIO_REVIEW:
-            success = perform_portfolio_review(driver, prompt_template, config.drive.portfolio_sheet_url)
+            success = perform_portfolio_review(
+                driver, prompt_template, config.drive.portfolio_sheet_url
+            )
         else:
             raise ValueError(f"Unhandled task type '{task_type}'")
 
@@ -295,7 +300,9 @@ def launch_research_task(
         return new_job_details
 
     except Exception as e:
-        logging.error(f"Failed to launch research for task ID {task_id}: {e}", exc_info=True)
+        logging.error(
+            f"Failed to launch research for task ID {task_id}: {e}", exc_info=True
+        )
         save_debug_screenshot(driver, f"launch_task_error_{task_id}")
         try:
             driver.switch_to.window(new_handle)
@@ -337,8 +344,17 @@ def check_and_process_active_jobs(
                 # 2. Check for a recoverable error message from Gemini
                 if not job.get("error_recovery_attempted"):
                     try:
-                        all_responses = driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
-                        if all_responses and RECOVERABLE_ERROR_PHRASE in all_responses[-1].text:
+                        all_responses = driver.find_elements(
+                            By.CSS_SELECTOR, RESPONSE_CONTENT_CSS
+                        )
+                        if (
+                            all_responses
+                            and (
+                                RECOVERABLE_ERROR_PHRASE
+                                or SOMETHING_WENT_WRONG_RESPONSE
+                            )
+                            in all_responses[-1].text
+                        ):
                             logging.warning(
                                 f"Recoverable error found for task {task_id}. "
                                 "Attempting to continue research..."
@@ -346,24 +362,32 @@ def check_and_process_active_jobs(
                             job["error_recovery_attempted"] = True
                             enter_prompt_and_submit(driver, "continue research")
                     except Exception as e:
-                        logging.warning(f"Could not check for recoverable error on task {task_id}: {e}")
+                        logging.warning(
+                            f"Could not check for recoverable error on task {task_id}: {e}"
+                        )
 
                 # If no issues, the job is just still running. Continue to the next job.
                 continue
 
             # If we reach here, the job IS complete. Process it.
-            logging.info(f"Export button found for task {task_id}. Starting post-processing...")
+            logging.info(
+                f"Export button found for task {task_id}. Starting post-processing..."
+            )
             final_status, results = ("error", {})
             if job.get("task_type") == TaskType.UNDERVALUED_SCREENER:
                 final_status, results = process_completed_screener(driver, job)
             else:
-                final_status, results = process_completed_job(driver, job, config, service)
+                final_status, results = process_completed_job(
+                    driver, job, config, service
+                )
 
             with sqlite3.connect(DATABASE_PATH) as conn:
                 if final_status == "completed":
                     update_task_status(conn, task_id, "completed")
                     if results.get("report_url"):
-                        update_task_result(conn, task_id, results["report_url"], results["summary"])
+                        update_task_result(
+                            conn, task_id, results["report_url"], results["summary"]
+                        )
                 else:  # final_status is 'error'
                     error_msg = results.get("error_message", "Post-processing failed.")
                     handle_task_failure(conn, task_id, error_msg)
@@ -371,7 +395,9 @@ def check_and_process_active_jobs(
             completed_task_ids.append(task_id)
 
         except Exception as e:
-            error_str = f"Worker failed while checking job status: {e.__class__.__name__}"
+            error_str = (
+                f"Worker failed while checking job status: {e.__class__.__name__}"
+            )
             logging.error(
                 f"Error checking active job for task ID {task_id}. {error_str}",
                 exc_info=True,
@@ -406,7 +432,9 @@ def cleanup_finished_jobs(
             driver.switch_to.window(original_tab)
 
 
-def dispatch_new_task(driver: WebDriver, num_active_jobs: int, config: Settings) -> ResearchJob | None:
+def dispatch_new_task(
+    driver: WebDriver, num_active_jobs: int, config: Settings
+) -> ResearchJob | None:
     """Checks for queued tasks and dispatches them if slots are available."""
     if num_active_jobs >= MAX_ACTIVE_RESEARCH_JOBS:
         return  # Guard clause: Exit if no slots are free.

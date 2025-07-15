@@ -39,6 +39,8 @@ def send_report_to_telegram(
     # --- Construct title based on task type ---
     if task_type == TaskType.COMPANY_DEEP_DIVE:
         title = f"✅ **New Deep-Dive Analysis: {company_name}**"
+    elif task_type == TaskType.SHORT_COMPANY_DEEP_DIVE:
+        title = f"📉 **New Short-Sell Analysis: {company_name}**"
     elif task_type == TaskType.DAILY_MONITOR:
         title = f"📈 **Daily Tactical Update: {company_name}**"
     else:

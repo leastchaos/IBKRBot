@@ -62,7 +62,7 @@ def save_debug_screenshot(driver: "WebDriver", filename_prefix: str):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         # Sanitize filename prefix to be safe for file systems
         safe_prefix = re.sub(r'[\\/*?:"<>|]', "", str(filename_prefix))
-        screenshot_path = os.path.join(debug_dir, f"{safe_prefix}_{timestamp}.png")
+        screenshot_path = os.path.join(debug_dir, f"{timestamp}_{safe_prefix}.png")
 
         driver.save_screenshot(screenshot_path)
         logging.info(f"Saved debug screenshot to: {screenshot_path}")

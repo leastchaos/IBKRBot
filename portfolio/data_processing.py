@@ -254,9 +254,8 @@ def calculate_var(row: pd.Series, price_factor: float) -> float:
         change = new_price - current_price
         return change * position * multiplier * forex_rate
 
-    else:
-        logger.warning(f"Invalid position type: {sec_type} for symbol: {row['Symbol']}")
-        return 0.0
+    logger.warning(f"Invalid position type: {sec_type} for symbol: {row['Symbol']}")
+    return 0.0
 
 
 def calculate_instrinsic_value(row: pd.Series) -> float:

@@ -46,9 +46,13 @@ async def _queue_task(update: Update, company_name: str, task_type: TaskType):
             )
             conn.commit()
 
-        task_type_friendly_name = (
-            "Deep-Dive" if task_type == TaskType.COMPANY_DEEP_DIVE else "Tactical"
-        )
+        if task_type == TaskType.COMPANY_DEEP_DIVE:
+            task_type_friendly_name = "Deep-Dive"
+        elif task_type == TaskType.SHORT_COMPANY_DEEP_DIVE:
+            task_type_friendly_name = "Short-Sell Analysis"
+        else:  # This will catch DAILY_MONITOR
+            task_type_friendly_name = "Tactical"
+
         logging.info(
             f"Successfully queued {task_type_friendly_name} for {company_name}."
         )
@@ -73,6 +77,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "You can use the buttons below for common actions or type commands directly.\n\n"
         "**Commands that require a ticker:**\n"
         "`/research <TICKER>` - Full deep-dive analysis.\n"
+        "`/short <TICKER>` - Short-sell deep-dive analysis.\n"
         "`/tactical <TICKER>` - Tactical update.\n"
         "`/add <TICKER>` - Add to daily monitoring.\n"
         "`/remove <TICKER>` - Remove from daily monitoring."
@@ -87,10 +92,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             [
                 InlineKeyboardButton("Trigger Screener", callback_data="trigger_screener"),
                 InlineKeyboardButton("Trigger Daily", callback_data="trigger_daily"),
-                InlineKeyboardButton("Trigger Portfolio Review", callback_data="trigger_portfolio"),
             ],
-            [InlineKeyboardButton("⚠️ Clear Queue", callback_data="clear_queue")],
+            [
+                InlineKeyboardButton("Trigger Portfolio Review", callback_data="trigger_portfolio"),
+                InlineKeyboardButton("⚠️ Clear Unstarted Queue", callback_data="clear_unstarted_queue")
+            ],
         ]
+
         keyboard.extend(admin_keyboard)
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -113,6 +121,20 @@ async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await _queue_task(update, company_name, TaskType.COMPANY_DEEP_DIVE)
 
 
+async def short_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Queues a new 'short_company_deep_dive' task from a user request."""
+    try:
+        # Get the company ticker from the arguments, e.g., /short arav
+        company_name = context.args[0].upper()
+    except (IndexError, ValueError):
+        await update.message.reply_text(
+            "Please provide a company ticker.\nExample: `/short NYSE:GME`"
+        )
+        return
+
+    await _queue_task(update, company_name, TaskType.SHORT_COMPANY_DEEP_DIVE)
+
+
 async def tactical_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Queues a new 'daily_monitor' (tactical) task from a user request."""
     try:
@@ -124,8 +146,6 @@ async def tactical_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     await _queue_task(update, company_name, TaskType.DAILY_MONITOR)
-
-
 
 async def add_daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Adds a company to the persistent daily monitoring list in the database."""
@@ -209,7 +229,7 @@ async def list_daily_command(
     """Lists all companies currently in the daily monitoring list."""
     message_text = ""
     try:
-        with sqlite3.connect(DATABASE_PATH) as conn:
+       with sqlite3.connect(DATABASE_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT company_name FROM daily_monitoring_list ORDER BY company_name ASC"
@@ -235,10 +255,10 @@ async def list_daily_command(
         await update.message.reply_text(text=message_text, parse_mode="Markdown")
 
 
-async def clear_queue_command(
+async def clear_unstarted_queue_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """(Admin-only) Clears all 'queued' and 'processing' tasks from the queue."""
+    """(Admin-only) Clears all 'queued' (unstarted) tasks from the queue."""
     message_text = ""
     if not _is_admin(update):
         message_text = "⛔️ Sorry, this is an admin-only command."
@@ -248,7 +268,7 @@ async def clear_queue_command(
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "DELETE FROM tasks WHERE status IN ('queued', 'processing')"
+                    "DELETE FROM tasks WHERE status IN ('queued')"
                 )
                 tasks_cleared = cursor.rowcount
                 conn.commit()
@@ -256,7 +276,7 @@ async def clear_queue_command(
                 logging.info(
                     f"Admin {user_id} cleared the task queue. {tasks_cleared} tasks removed."
                 )
-                message_text = f"✅ Queue cleared. {tasks_cleared} pending/processing tasks were removed."
+                message_text = f"✅ Queue cleared. {tasks_cleared} unstarted tasks were removed."
 
         except sqlite3.Error as e:
             logging.error(f"Database error during queue clearing: {e}", exc_info=True)
@@ -389,8 +409,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Route the callback data to the appropriate command function
     if command == "list_daily":
         await list_daily_command(update, context)
-    elif command == "clear_queue":
-        await clear_queue_command(update, context)
+    elif command == "clear_unstarted_queue":
+        await clear_unstarted_queue_command(update, context)
     elif command == "trigger_screener":
         await trigger_screener_command(update, context)
     elif command == "trigger_daily":
@@ -418,11 +438,12 @@ def main() -> None:
     # Register all command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("research", research_command))
+    application.add_handler(CommandHandler("short", short_command))
     application.add_handler(CommandHandler("tactical", tactical_command))
     application.add_handler(CommandHandler("add", add_daily_command))
     application.add_handler(CommandHandler("remove", remove_daily_command))
     application.add_handler(CommandHandler("listdaily", list_daily_command))
-    application.add_handler(CommandHandler("clearqueue", clear_queue_command))
+    application.add_handler(CommandHandler("clearqueue", clear_unstarted_queue_command))
     application.add_handler(CommandHandler("triggerportfolio", trigger_portfolio_review_command))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(

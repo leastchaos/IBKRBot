@@ -562,7 +562,7 @@ def process_completed_job(
             )
             enter_prompt_and_submit(driver, PROMPT_BUY_RANGE_CHECK)
             # Use a shorter timeout for this simple YES/NO check
-            check_response = get_response(driver, res_before_check, timeout=120)
+            check_response = get_response(driver, res_before_check, timeout=900)
 
             if check_response and "YES" in check_response.upper():
                 logging.info(
