@@ -63,8 +63,8 @@ def main(
     ib = IB()
     ib.connect(host, port, clientId=random.randint(2,1000))
 
-    try:
-        while True:
+    while True:
+        try:
             # check if ib is connected
             if not ib.isConnected():
                 try:
@@ -81,11 +81,13 @@ def main(
                 scenario_sheet,
             )
             wait_for_next_update(300)
-
-    except KeyboardInterrupt:
-        logger.info("Exiting program...")
-    finally:
-        ib.disconnect()
+        except KeyboardInterrupt:
+            logger.info("Exiting program...")
+            break
+        except Exception as e:
+            logger.exception(f"An error occurred during update: {e}")
+            wait_for_next_update(300)
+    ib.disconnect()
 
 
 if __name__ == "__main__":

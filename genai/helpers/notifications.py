@@ -18,7 +18,7 @@ def send_report_to_telegram(
     """
     Sends a text message with a summary and a link to a Google Doc to one or more chats.
     """
-    logging.info(f"Preparing to send text notification for {company_name} (Type: {task_type})...")
+    logging.info(f"Preparing to send text notification for {company_name} (Type: {task_type})")
     if not config or not config.token:
         logging.error("Telegram token not configured. Cannot send notifications.")
         return False
@@ -46,12 +46,17 @@ def send_report_to_telegram(
     else:
         title = f"ℹ️ **New Report: {company_name}**"
 
+    gemini_url = "https://gemini.google.com/app"  # URL for Gemini chat
+
     # --- Construct the message text ---
     message_text = (
         f"{title}\n\n"
         f"{summary_text}\n\n"
-        f"View Full Report:\n"
-        f"[Click here to open Google Doc]({doc_url})"
+        f"**Report:** [Google Doc]({doc_url})\n"
+        f"**Gemini Chat:** [Continue the conversation]({gemini_url})"
+        # Removed redundant "Click here to open"
+        # Added a direct link to the Gemini chat for user interaction
+        # Used "Gemini Chat:" label for clarity
     )
 
     # --- Loop and send to all unique recipients ---
