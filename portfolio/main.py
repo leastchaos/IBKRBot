@@ -85,7 +85,9 @@ def main(
             logger.info("Exiting program...")
             break
         except Exception as e:
-            logger.exception(f"An error occurred during update: {e}")
+            logger.exception(f"An error occurred during update: {e}", exc_info=True)
+            logger.info("Retrying in 5 minutes...")
+            # Wait for 5 minutes before retrying
             wait_for_next_update(300)
     ib.disconnect()
 

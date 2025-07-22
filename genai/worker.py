@@ -273,6 +273,7 @@ def launch_research_task(
         elif task_type in [
             TaskType.COMPANY_DEEP_DIVE,
             TaskType.SHORT_COMPANY_DEEP_DIVE,
+            TaskType.BUY_THE_DIP,
         ]:
             prompt = f"{prompt_template} {company_name}."
             success = perform_deep_research(driver, prompt)
@@ -537,4 +538,4 @@ def main(headless: bool = True) -> None:
 
 
 if __name__ == "__main__":
-    main(headless=False)
+    main(headless=False)  # Set to False for debugging with GUI

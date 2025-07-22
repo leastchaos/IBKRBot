@@ -50,6 +50,8 @@ async def _queue_task(update: Update, company_name: str, task_type: TaskType):
             task_type_friendly_name = "Deep-Dive"
         elif task_type == TaskType.SHORT_COMPANY_DEEP_DIVE:
             task_type_friendly_name = "Short-Sell Analysis"
+        elif task_type == TaskType.BUY_THE_DIP:
+            task_type_friendly_name = "Buy-The-Dip Analysis"
         else:  # This will catch DAILY_MONITOR
             task_type_friendly_name = "Tactical"
 
@@ -78,6 +80,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "**Commands that require a ticker:**\n"
         "`/research <TICKER>` - Full deep-dive analysis.\n"
         "`/short <TICKER>` - Short-sell deep-dive analysis.\n"
+        "`/buythedip <TICKER>` - Contrarian 'Buy The Dip' analysis.\n"
         "`/tactical <TICKER>` - Tactical update.\n"
         "`/add <TICKER>` - Add to daily monitoring.\n"
         "`/remove <TICKER>` - Remove from daily monitoring."
@@ -133,6 +136,20 @@ async def short_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     await _queue_task(update, company_name, TaskType.SHORT_COMPANY_DEEP_DIVE)
+
+
+async def buy_the_dip_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Queues a new 'buy_the_dip' task from a user request."""
+    try:
+        # Get the company ticker from the arguments, e.g., /buythedip arav
+        company_name = context.args[0].upper()
+    except (IndexError, ValueError):
+        await update.message.reply_text(
+            "Please provide a company ticker.\nExample: `/buythedip NYSE:GME`"
+        )
+        return
+
+    await _queue_task(update, company_name, TaskType.BUY_THE_DIP)
 
 
 async def tactical_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -439,6 +456,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("research", research_command))
     application.add_handler(CommandHandler("short", short_command))
+    application.add_handler(CommandHandler("buythedip", buy_the_dip_command))
     application.add_handler(CommandHandler("tactical", tactical_command))
     application.add_handler(CommandHandler("add", add_daily_command))
     application.add_handler(CommandHandler("remove", remove_daily_command))

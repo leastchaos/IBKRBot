@@ -7,6 +7,7 @@ from genai.helpers.prompt_text import (
     DEEPDIVE_PROMPT,
     SHORT_DEEPDIVE_PROMPT,
     TACTICAL_PROMPT,
+    BUY_THE_DIP_DEEPDIVE_PROMPT,
 )
 
 # --- Application-Wide Constants ---
@@ -64,6 +65,7 @@ class TaskType(str, Enum):
     UNDERVALUED_SCREENER = "undervalued_screener"
     PORTFOLIO_REVIEW = "portfolio_review"
     SHORT_COMPANY_DEEP_DIVE = "short_company_deep_dive"
+    BUY_THE_DIP = "buy_the_dip"
 
 
 TASK_PROMPT_MAP = {
@@ -72,4 +74,5 @@ TASK_PROMPT_MAP = {
     TaskType.UNDERVALUED_SCREENER: SCANNER_PROMPT,
     TaskType.PORTFOLIO_REVIEW: PORTFOLIO_REVIEW_PROMPT,
     TaskType.SHORT_COMPANY_DEEP_DIVE: SHORT_DEEPDIVE_PROMPT,
+    TaskType.BUY_THE_DIP: BUY_THE_DIP_DEEPDIVE_PROMPT,
 }

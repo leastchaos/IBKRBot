@@ -523,13 +523,19 @@ def process_completed_job(
         )
         enter_prompt_and_submit(driver, FOLLOWUP_DEEPDIVE_PROMPT)
         summary_text = get_response(driver, res_before_summary, is_csv=False)
-        logging.info(f"Summary: {summary_text}")
 
         doc_url = export_and_get_doc_url(driver, job["handle"])
 
-        if not doc_url or not isinstance(summary_text, str):
+        if not summary_text or not isinstance(summary_text, str):
+            logging.warning(
+                f"Failed to retrieve a valid summary for {company_name}. Using a default message."
+            )
+            summary_text = "Failed to provide summary."
+        logging.info(f"Summary: {summary_text}")
+
+        if not doc_url:
             raise ValueError(
-                "Failed to get a valid Doc URL or Summary string from Gemini."
+                "Failed to get a valid Doc URL from Gemini. Cannot proceed."
             )
 
         doc_id = get_doc_id_from_url(doc_url)
