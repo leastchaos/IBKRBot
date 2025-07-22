@@ -465,6 +465,7 @@ def _send_final_notification(
     config: Settings,
     task_type: str,
     target_chat_id: str | None,
+    gemini_chat_url: str,
 ):
     """Private helper to handle sending the final notification to Telegram."""
     if not config.telegram:
@@ -479,6 +480,7 @@ def _send_final_notification(
         config=config.telegram,
         task_type=task_type,
         target_chat_id=target_chat_id,
+        gemini_url=gemini_chat_url,
     )
 
 
@@ -523,6 +525,7 @@ def process_completed_job(
         )
         enter_prompt_and_submit(driver, FOLLOWUP_DEEPDIVE_PROMPT)
         summary_text = get_response(driver, res_before_summary, is_csv=False)
+        gemini_chat_url = driver.current_url
 
         doc_url = export_and_get_doc_url(driver, job["handle"])
 
@@ -554,7 +557,13 @@ def process_completed_job(
                 )
         _manage_google_drive_file(service, doc_id, config.drive, new_doc_title)
         _send_final_notification(
-            doc_url, summary_text, company_name, config, task_type, target_chat_id
+            doc_url,
+            summary_text,
+            company_name,
+            config,
+            task_type,
+            target_chat_id,
+            gemini_chat_url,
         )
 
         final_results: ProcessingResult = {
