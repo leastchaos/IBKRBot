@@ -170,51 +170,124 @@ Structure your final response *exactly* as follows, filling in the data from you
 
 PROMPT_BUY_RANGE_CHECK = "Based on the full report above, is the current stock price inside the 'BUY' range you identified? Please answer with only 'YES' or 'NO'."
 
-PORTFOLIO_REVIEW_PROMPT = """You are to act as an expert financial analyst and portfolio strategist. Your analysis must be based on the latest publicly available information.
+PORTFOLIO_REVIEW_PROMPT = """You are to act as a world-class portfolio analyst and strategist, providing institutional-grade analysis. Your response must go beyond surface-level recommendations and provide a comprehensive deep dive into each position. Your analysis must be based on the latest publicly available information.
 
-The attached file contains my current stock holdings. The file includes the ticker symbol, the number of shares I own, and my average cost basis. Please use this file only to identify the stocks I own and my position details. Disregard any other analytical data in the file, as it is likely outdated.
+The attached file contains my current stock and options positions.
 
-Your primary task is to conduct a thorough, stock-by-stock analysis of my portfolio. For each individual holding, you must evaluate the current market conditions, company fundamentals, technical indicators, and forward-looking catalysts to recommend one of the following four actions:
+Your primary task is to conduct a multi-layered analysis by first parsing and grouping the entire portfolio into four distinct categories in the following order of precedence:
 
-1. Sell (Set a Target Price):
-This action is appropriate if the stock appears overvalued, has reached a significant technical resistance level, or if its fundamental outlook has weakened.
+Covered Call Positions
 
-Required Output: Specify a concrete Target Sell Price. Justify this price with a rationale based on valuation metrics (e.g., P/E, P/S), technical analysis (e.g., RSI, Fibonacci levels, moving averages), and/or recent analyst price targets.
+Option Spread Positions
 
-2. Sell a Covered Call:
-This action is suitable for stocks you anticipate will trade sideways or experience only modest gains in the near term, allowing for income generation.
+Stock-Only Holdings
 
-Required Output: Specify a Strike Price and an Expiration Date (typically 30-45 days from now). Justify your selection by explaining how it balances generating a reasonable premium against the risk of the shares being called away. Reference the stock's implied volatility (IV) in your reasoning.
+Single-Leg Options Positions
 
-3. Hold (Awaiting a Major Catalyst):
-This action is for stocks with a significant, identifiable, near-term event that could lead to substantial price appreciation. Selling or writing a call would risk capping this potential upside.
+You will provide a detailed analysis for each position, followed by a consolidated executive summary containing all summary tables at the end of your response.
 
-Required Output: Clearly identify the specific upcoming Catalyst (e.g., an imminent earnings release with high expectations, a pending regulatory decision, a major product launch, or clinical trial results). Explain why this catalyst justifies avoiding any selling action at this time.
+Analysis Frameworks by Category
+Framework for Stocks (Used in Part 1 & 3)
+For each stock (whether standalone or part of a covered call), your detailed analysis must follow this structure:
 
-4. Hold (Neutral Stance):
-This is the default action if none of the above are optimal. This could be because the stock is fairly valued and is a solid long-term holding, is currently in a consolidation phase without a clear direction, or if there is insufficient data to justify a more active strategy.
+Recommendation & Key Parameters: State the recommended action and the specific parameters (e.g., Target Price, New Strike/Exp).
 
-Required Output: Provide a concise rationale for why holding without a specific action is the most prudent strategy at this moment.
+Rationale & Analysis (Deep Dive Structure):
 
-Output Format:
-Please present your final analysis in two parts.
+Fundamental Deep Dive:
 
-Part 1: Detailed Stock-by-Stock Analysis Present a structured, sequential analysis. For each stock in the portfolio, create a dedicated section. Repeat the following structure for every stock:
-Ticker: [TICKER] - [Company Name]
-Recommended Action: [e.g., Sell Covered Call]
+Valuation: What is its current P/E, P/S, or EV/EBITDA? How does this compare to its direct industry peers and its own 5-year historical average? Is it currently looking cheap, fair, or expensive?
 
-Key Parameters: [e.g., Strike: $155.00, Expiration: [Date]]
+Financial Health: Briefly assess its balance sheet. Mention Debt-to-Equity ratio, current cash position, and recent Free Cash Flow (FCF) trends. Is the company financially sound?
 
-Rationale & Analysis: [Provide your comprehensive summary here. This section should be detailed and explain the current financial data, market sentiment, technical levels, and any relevant news or upcoming events that support your recommendation. Since this is not in a table, feel free to be as descriptive as necessary.]
+Growth & Profitability: What are the recent trends in Revenue and EPS growth (YoY/QoQ)? Are profit margins (Gross, Operating) expanding or contracting?
 
-Part 2: Concluding Summary Table
-After presenting the detailed analysis for all stocks, provide a final conclusion in the form of a summary table. This table should offer a quick, scannable overview of your recommendations.
+Technical Picture:
 
-Conclusion
-Ticker	Recommended Action	Key Parameters	Concise Rationale
-[Ticker]	[Action]	[Parameters]	[A one-sentence summary of your reasoning]
-[Ticker]	[Action]	[Parameters]	[A one-sentence summary of your reasoning]
-[Ticker]	[Action]	[Parameters]	[A one-sentence summary of your reasoning]"""
+Trend & Key Levels: Is the stock in a clear uptrend, downtrend, or consolidation? Where are the critical short-term support and resistance levels (provide specific prices)? Is it trading above or below its key 50-day and 200-day moving averages?
+
+Momentum & Volume: What is the current RSI reading and what does it suggest (e.g., overbought, oversold, neutral, divergence)? Is there any notable recent trading volume activity?
+
+Forward Outlook & Strategic Narrative:
+
+Bull Case: What are the 2-3 primary catalysts or long-term drivers that would push the stock higher? (e.g., new product cycle, market share gains, margin expansion).
+
+Bear Case: What are the 2-3 primary risks or headwinds facing the company? (e.g., intense competition, macroeconomic sensitivity, regulatory threats).
+
+Upcoming Catalysts: Note the next scheduled earnings report date or any other significant corporate events.
+
+Framework for Options (Used in Part 1, 2 & 4)
+For each option strategy (covered calls, spreads, or single legs), your detailed analysis must follow this structure:
+
+Recommendation & Key Parameters: State the recommended action and the specific parameters (e.g., New Strike/Exp).
+
+Rationale & Analysis (Deep Dive Structure):
+
+The Greeks (Position DNA) & Interpretation:
+
+Delta: What is the position's net delta? What is its current share-equivalent exposure?
+
+Theta: What is the daily time decay? Is this decay helping (short premium) or hurting (long premium) the position?
+
+Vega: How sensitive is the position to changes in volatility? Is a spike or crush in IV a major risk or benefit?
+
+Gamma: Is there significant gamma risk (i.e., will delta change rapidly if the stock moves toward a short strike)?
+
+Volatility Analysis:
+
+Implied Volatility (IV): What is the current IV of the options?
+
+IV Rank/Percentile: What is the IV Rank or Percentile? (e.g., "IV Rank is 75," meaning current IV is in the top 25% of its 1-year range). What does this imply for the strategy (i.e., is premium rich or cheap)?
+
+Scenario & Risk Analysis:
+
+Profit/Loss Profile: What are the breakeven price(s), maximum profit potential, and maximum risk for this position?
+
+Probabilistic Outlook: What is the approximate Probability of Profit (PoP)? Is the trade positioned for a high-probability outcome or a low-probability, high-reward event?
+
+Primary Risk: What is the single biggest threat to this position right now? (e.g., "A sharp move beyond the short strike," "An imminent IV crush after the upcoming earnings report," or "Accelerating time decay.")
+
+Output Format
+Please present your response in two main sections:
+
+Section 1: Detailed Deep-Dive Analysis
+Present the full, detailed analysis for each position, broken down into the four categories below.
+
+Part 1: Covered Call Positions
+(For each, recommend: Roll the Call, Hold, Allow Assignment, or Close Entire Position. Apply the relevant Stock and Option analysis frameworks.)
+
+Part 2: Option Spread Positions
+(For each, recommend: Hold, Close, Roll, or Let Expire. Apply the Option analysis framework.)
+
+Part 3: Stock-Only Holdings
+(For each, recommend from the full range of actions: Sell, Sell a Covered Call, Hold (Catalyst), Add to Position, or Hold (Neutral). Apply the Stock analysis framework.)
+
+Part 4: Single-Leg Options Positions
+(For each, recommend: Close, Roll, Hold, or Let Expire. Apply the Option analysis framework.)
+
+Section 2: Executive Summary
+After presenting all the detailed analyses, provide this concluding section that consolidates all summary tables for a quick overview.
+
+Covered Call Summary
+| Strategy | Recommended Action | New Parameters | Concise Rationale |
+| :--- | :--- | :--- | :--- |
+| Covered Call on Ticker | [Action] | [New Strike/Exp] | [One-sentence summary] |
+
+Option Spread Summary
+| Strategy | Recommended Action | Key Parameters | Concise Rationale |
+| :--- | :--- | :--- | :--- |
+| [Full Spread Desc.] | [Action] | [Parameters] | [One-sentence summary] |
+
+Stock-Only Summary
+| Ticker | Recommended Action | Key Parameters | Concise Rationale |
+| :--- | :--- | :--- | :--- |
+| [Ticker] | [Action] | [Parameters] | [One-sentence summary] |
+
+Single-Leg Options Summary
+| Position | Recommended Action | New Parameters | Concise Rationale |
+| :--- | :--- | :--- | :--- |
+| [Full Position Desc.] | [Action] | [New Strike/Exp] | [One-sentence summary] |
+"""
 
 SHORT_DEEPDIVE_PROMPT = """You are the founder and portfolio manager of a specialist short-only fund, known for your extreme discipline and patience. Your fund's entire strategy is built on waiting for the "perfect pitch"—an opportunity where multiple, powerful bearish forces are converging simultaneously. You believe that most stocks are not shortable and that acting on marginal ideas is the quickest path to ruin. Your default answer is always "No."
 
@@ -292,110 +365,142 @@ Your analysis should be based solely on publicly available information up to the
 
 The stock ticker to be analyzed is:"""
 
-BUY_THE_DIP_DEEPDIVE_PROMPT = """I am an investor considering a contrarian position in a stock that has experienced a significant recent price drop. My goal is to determine if the drop is an overreaction to temporary news or a signal of a long-term, fundamental decline. Please conduct a multi-faceted deep research analysis on the company and provide a structured, objective report based on the following framework."
+BUY_THE_DIP_DEEPDIVE_PROMPT = """Objective: To analyze a stock after a significant price drop, differentiating between a temporary overreaction (a bounce opportunity) and a fundamental decline (a value trap), with a heightened sensitivity to short-term market dynamics.
 
-Phase 1: Fundamental Analysis (Quantitative & Qualitative)
+Phase 1: Situational Triage & Sentiment Analysis (The "Why" and "Who Thinks What")
+This phase is prioritized to quickly assess if the sell-off is likely emotional and exhausted.
 
+Catalyst Identification:
 
+Precisely identify the news/event(s) that triggered the drop (e.g., earnings miss, guidance cut, litigation, regulatory action, competitive threat).
 
-Quantitative Analysis:
+Source and summarize the primary documents (press releases, SEC filings) and reputable news coverage.
 
-Financial Health: Analyze the most recent quarterly and annual reports (10-K and 10-Q). Report on the company's revenue and earnings growth trends over the last three to five years.
+Impact Quantification (The Overreaction Test):
 
-Balance Sheet: Scrutinize the balance sheet. Is the company's debt-to-equity ratio healthy compared to industry peers? Does it have sufficient cash on hand?
+Attempt to quantify the direct financial impact of the negative news. For example:
 
-Profitability & Efficiency: Calculate and report on key ratios such as Return on Equity (ROE), Return on Assets (ROA), and Free Cash Flow (FCF). Are these metrics trending up or down?
+Earnings Miss: How much did it miss by in EPS and revenue? What is the dollar value of the revised annual guidance?
 
-Valuation: Compare the company's current valuation (e.g., P/E ratio, P/S ratio, EV/EBITDA) to its historical averages and the industry average.
+Litigation/Fine: What is the estimated or actual financial liability?
 
-Qualitative Analysis:
+Compare this quantifiable impact to the loss in market capitalization. Has the market wiped out billions in value for a problem that costs millions? State the ratio clearly.
 
-Business Model & Competitive Advantage ("Moat"): Describe the company's core business model. What is its competitive advantage? Is this "moat" (e.g., brand strength, network effects, patents, economies of scale) still intact, or is it eroding?
+Market Sentiment & Positioning Analysis:
 
-Management & Corporate Governance: Research the management team. What is their track record? Have there been any recent changes in leadership? Are there any reports of poor capital allocation (e.g., bad acquisitions, excessive executive compensation, poor-timed share buybacks)? Is insider buying or selling activity notable?
+Short Interest: What is the current short interest as a percentage of the float? Has it spiked recently? High short interest can fuel a "short squeeze" on any good news.
 
-Phase 2: Event-Specific Analysis (The "Why")
+Options Market Activity: Analyze the put/call ratio. Is it unusually high, suggesting extreme pessimism (a contrarian indicator)? Look at the implied volatility (IV Rank/Percentile). Is it elevated, making options selling strategies more attractive?
 
+Analyst Revisions: Track the trend of analyst ratings and price targets since the news. Are analysts universally downgrading, or are some defending the stock, creating a "battleground"? Note the range of price targets.
 
+Phase 2: Fundamental Health Check (The "Will it Survive?" Test)
+This is a streamlined analysis focused on solvency and stability, not perfection.
 
-Identify the Catalyst: Identify the specific event(s) that caused the recent price drop. Summarize the key news, an earnings miss, an analyst downgrade, or a legal issue.
+Liquidity & Balance Sheet Strength:
 
-Assess the Severity: Provide an objective evaluation of the severity of the news. Is it a one-time, temporary issue (e.g., supply chain disruption, a minor legal settlement) or a long-term, structural problem (e.g., a major competitor entering the market, a permanent decline in demand for their products)?
+Cash Position: How much cash and short-term investments are on hand?
 
-Market Reaction: Evaluate if the market's reaction seems rational or emotional. Compare the magnitude of the price drop to the actual financial impact of the news. For example, did the stock lose billions in market cap for a one-time charge of a few million?
+Burn Rate: Based on the most recent quarter's Free Cash Flow (FCF), what is the company's cash burn or generation rate? How many quarters of liquidity does it have if the crisis persists?
 
-Phase 3: Technical Analysis
+Debt: What is the debt-to-equity ratio and Net Debt/EBITDA? Are there any major debt covenants at risk of being breached? When are the major debt maturities?
 
+Core Profitability & Valuation:
 
+Profitability Check: Is the company still profitable on an operating basis (EBIT) despite the recent issues? Is it still generating positive free cash flow?
 
-Trend & Momentum Indicators: Analyze the stock's recent price action. Is it in a clear short-term or medium-term downtrend? Are key momentum indicators (e.g., RSI, MACD) showing oversold conditions or negative divergence?
+Valuation Snapshot: How do the current valuation multiples (P/E, P/S, EV/EBITDA) compare to their 5-year historical lows and the industry average? Is it cheap on a historical basis?
 
-Support & Resistance Levels: Identify key support and resistance levels on the chart. Where are the potential price floors and ceilings?
+Qualitative Resilience:
 
-Moving Averages: Analyze the stock's position relative to key moving averages (e.g., 50-day, 200-day). Are they acting as support or resistance? Has the stock recently crossed a significant moving average?
+Business Model & Moat: In one or two sentences, what is the core business? Is the competitive advantage (moat) temporarily impaired (e.g., a factory shutdown) or permanently breached (e.g., a competitor's superior product)?
 
-Chart Patterns: Look for any relevant chart patterns (e.g., double bottom, rising wedge, head and shoulders) that might signal a potential reversal or continuation of the trend.
+Management & Insider Activity: Did management provide a clear, confident plan during their conference call? Critically, has there been any insider buying following the price drop? Insider buys are a powerful signal.
 
-Phase 4: Red Flag Analysis (The "Value Trap" Test)
+Phase 3: Technical Analysis (The "When & Where" of Entry)
+This phase focuses on identifying potential entry points and reversal signals.
 
+Price Action & Key Levels:
 
+Identify major long-term support levels (e.g., multi-year lows, prior consolidation zones). Has the stock reached one of these levels?
 
-Revenue & Earnings Decline: Has the company been experiencing a sustained decline in revenue or earnings, even before the recent news?
+Map out key resistance levels on the upside (e.g., the bottom of the gap down, key moving averages).
 
-High Debt & Unsustainable Dividends: Is the company carrying an excessive amount of debt, or is it paying a dividend that seems unsustainable given its cash flow?
+Momentum & Reversal Indicators:
 
-Eroding Competitive Advantage: Are there clear signs that the company is losing market share to competitors or failing to innovate?
+Oversold Condition: Is the daily and weekly Relative Strength Index (RSI) in oversold territory (typically below 30)?
 
-Management Issues: Are there any signs of aggressive accounting practices, poor capital allocation, or a management team that is "over-promising and under-delivering"?
+Divergence: Is there any bullish divergence forming (e.g., the price making a new low while the RSI makes a higher low)? This can signal weakening downward momentum.
 
-Phase 5: Synthesis and Conclusion
+Volume Profile: Was the sell-off on exceptionally high volume? Is volume diminishing as the price stabilizes, suggesting seller exhaustion?
 
+Confirmation Signals to Watch For:
 
+What specific technical event would signal a potential bottom is in? (e.g., A reclamation of the 5-day moving average, a "hammer" candlestick pattern on high volume, a break of the immediate downtrend line).
 
-Summary of Findings: Based on the above analysis, provide a clear, concise summary of the key arguments for and against investing in the company at its current price.
+Phase 4: Synthesis & Strategic Execution
+This final phase integrates all findings into actionable, risk-managed strategies.
+
+Summary of Findings:
+
+The Bull Case (Opportunity): Summarize the arguments for a rebound (e.g., "Massive market cap loss dwarfs the quantifiable financial impact, RSI is deeply oversold at a multi-year support level, and insider buying has been reported.")
+
+The Bear Case (Risk): Summarize the arguments against investing (e.g., "The company has high debt, the guidance cut implies a structural problem, and the competitive moat appears to be eroding.")
 
 Final Recommendation & Strategy:
 
-Categorize the company as:
+Categorize the situation as:
 
-A true value opportunity: The drop is an overreaction, and the fundamentals are sound.
+Speculative Rebound Play: High-risk, but the overreaction appears extreme. The trade is primarily based on sentiment and technicals.
 
-A "falling knife" (too risky): The drop is a result of legitimate, ongoing issues.
+Contrarian Value Opportunity: The sell-off is significant, but the company's fundamentals and moat appear resilient enough to recover over the long term.
 
-A "value trap": The company is cheap for a reason, and there is no clear catalyst for a rebound.
+Falling Knife / Value Trap: The negative catalyst reveals deep, unresolved fundamental problems. Avoid.
 
-Based on the preceding fundamental and technical analysis, propose and justify specific investment strategies for different risk appetites. For each strategy, recommend a specific entry point (e.g., current price, a specific support level) and provide explicit details for each leg (e.g., strike prices, expiration dates).
+Tiered Strategy Recommendations:
 
-Use the following layout for the recommendations:
+[Aggressive Risk Profile]: Tactical Rebound Trade
 
-[Risk Profile]: [Title of Strategy]
+Rationale: To capitalize on a potential sharp, short-term bounce driven by extreme oversold conditions and high short interest. This is a high-risk, high-reward approach.
 
-Rationale: [Brief explanation of why this strategy is suitable for this risk profile and market condition.]
+Recommended Action:
 
-Recommended Action: [Clear, concise instructions on how to execute the strategy. Use bullet points for different options if applicable.]
+Option 1 (Stock): Buy a small, initial position at the current price, with a tight stop-loss below the recent low.
 
-Justification: [Connect the recommendation back to findings from the fundamental and technical analysis.]
+Option 2 (Options): Buy short-dated (30-60 days) at-the-money or slightly out-of-the-money call options.
 
-Risk/Reward: [A brief summary of the potential outcomes.]
+Justification: This strategy is justified if Phase 1 shows a massive overreaction and Phase 3 shows extreme oversold technicals (RSI < 25) at a major support level.
 
-Justify the choice of each recommended strategy, explaining its risk/reward profile and why it fits the analysis's conclusion.
+Risk/Reward: High potential reward if a bounce occurs quickly. High risk of total loss on options or being stopped out on the stock if the downtrend continues.
 
-Justify the Conclusion: Explain the reasoning behind the final recommendation, citing specific data and insights from the previous phases.
+[Moderate Risk Profile]: Defined-Risk Entry
 
-Final Instructions:
+Rationale: To gain bullish exposure while defining maximum loss and potentially entering the stock at a lower price. Balances the desire to participate with prudent risk management.
 
+Recommended Action:
 
+Option 1 (Cash-Secured Put): Sell a short-dated (30-45 days) out-of-the-money put option at a strike price corresponding to a major support level.
 
-Ensure the analysis is objective and data-driven.
+Option 2 (Bull Call Spread): Buy a call option and simultaneously sell a higher-strike call option to finance the purchase and cap both risk and reward.
 
-Cite all sources used (e.g., company reports, reputable financial news outlets, analyst reports).
+Justification: This strategy is ideal when the analysis suggests a likely bottom but you want confirmation or a better price. Elevated implied volatility (from Phase 1) makes selling options premium attractive.
 
-Avoid making emotional or subjective judgments.
+Risk/Reward: Moderate, defined reward. The risk is either owning the stock at a lower price (for puts) or losing the net debit paid (for spreads).
 
-Structure the final response using clear headings and bullet points for readability.
+[Conservative Risk Profile]: Staggered Accumulation
 
-Ticker to be researched:
-"""
+Rationale: For the long-term investor who believes in the fundamental recovery but acknowledges that timing the exact bottom is impossible.
+
+Recommended Action:
+
+Initiate a small (e.g., 1/4 of full position size) purchase at the current price.
+
+Plan subsequent purchases at pre-defined lower support levels or after a technical confirmation signal (e.g., reclaiming the 50-day moving average).
+
+Justification: This approach is justified if the conclusion is "Contrarian Value," where the long-term fundamentals (Phase 2) are deemed solid despite the current crisis. It prioritizes achieving a good average cost over timing the bottom.
+
+Risk/Reward: Lower immediate risk by not deploying all capital at once. The main risk is "catching a falling knife" if the fundamental thesis is wrong, but the damage is averaged down."""
+
 
 BUY_THE_DIP_SCREENER_PROMPT = """Objective: "I need to generate a list of publicly traded companies that are potential candidates for a contrarian investment strategy. The goal is to identify stocks that have recently experienced a significant price drop but may be fundamentally sound and oversold."
 

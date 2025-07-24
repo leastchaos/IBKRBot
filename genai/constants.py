@@ -55,7 +55,11 @@ ADD_FROM_DRIVE_BUTTON_XPATH = "//button[@data-test-id='uploader-drive-button']"
 DRIVE_URL_INPUT_CSS = "input[aria-label='Search in Drive or paste URL']"
 INSERT_BUTTON_XPATH = "//button[contains(@aria-label, 'Insert') and not(@disabled)]"
 PICKER_IFRAME_XPATH = "//iframe[contains(@src, 'docs.google.com/picker/v2/home')]"
-
+# --- NEW: Share Dialog Selectors ---
+SHARE_BUTTON_XPATH = "//button[descendant::mat-icon[@fonticon='share']]"
+CREATE_PUBLIC_LINK_BUTTON_XPATH = "//button[contains(., 'Create public link')]"
+PUBLIC_URL_INPUT_XPATH = "//input[contains(@value, 'gemini.google.com/share/')]"
+CLOSE_SHARE_DIALOG_BUTTON_XPATH = "//button[contains(., 'Done')]"
 
 class TaskType(str, Enum):
     """Defines the valid types of tasks the worker can process."""

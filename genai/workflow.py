@@ -27,12 +27,16 @@ from genai.helpers.notifications import send_report_to_telegram
 from genai.helpers.prompt_text import PROMPT_BUY_RANGE_CHECK, FOLLOWUP_DEEPDIVE_PROMPT
 from genai.helpers.helpers import save_debug_screenshot
 from genai.constants import (
+    CLOSE_SHARE_DIALOG_BUTTON_XPATH,
+    CREATE_PUBLIC_LINK_BUTTON_XPATH,
     DATABASE_PATH,
     GEMINI_URL,
     INSERT_BUTTON_XPATH,
     PICKER_IFRAME_XPATH,
     PROMPT_TEXTAREA_CSS,
     DEEP_RESEARCH_BUTTON_XPATH,
+    PUBLIC_URL_INPUT_XPATH,
+    SHARE_BUTTON_XPATH,
     START_RESEARCH_BUTTON_XPATH,
     SHARE_EXPORT_BUTTON_XPATH,
     EXPORT_TO_DOCS_BUTTON_XPATH,
@@ -466,6 +470,7 @@ def _send_final_notification(
     task_type: str,
     target_chat_id: str | None,
     gemini_chat_url: str,
+    gemini_public_url: str | None = None,
 ):
     """Private helper to handle sending the final notification to Telegram."""
     if not config.telegram:
@@ -481,6 +486,7 @@ def _send_final_notification(
         task_type=task_type,
         target_chat_id=target_chat_id,
         gemini_url=gemini_chat_url,
+        gemini_public_url=gemini_public_url,
     )
 
 
@@ -505,7 +511,60 @@ def _queue_follow_up_task(company_name: str, original_task_id: int):
             f"Database error while queuing follow-up task for {company_name}.",
             exc_info=True,
         )
+def share_chat_and_get_public_url(driver: WebDriver) -> str | None:
+    """
+    Shares the current Gemini conversation and returns the public URL.
 
+    Handles clicking the 'Share & Export' button, then 'Create public link',
+    extracting the URL from the input field, and closing the dialog.
+
+    Args:
+        driver: The Selenium WebDriver instance.
+
+    Returns:
+        The public URL as a string, or None if an error occurs.
+    """
+    logging.info("Sharing conversation to get public link...")
+    try:
+        # 1. Click the main 'Share & Export' button to open the dialog
+        WebDriverWait(driver, 20).until(
+            EC.element_to_be_clickable((By.XPATH, SHARE_BUTTON_XPATH))
+        ).click()
+        logging.info("Clicked 'Share & Export' button.")
+
+        # 2. Click 'Create public link'
+        WebDriverWait(driver, 20).until(
+            EC.element_to_be_clickable((By.XPATH, CREATE_PUBLIC_LINK_BUTTON_XPATH))
+        ).click()
+        logging.info("Clicked 'Create public link'.")
+
+        # 3. Wait for the input with the URL and get its 'value' attribute
+        public_url_input = WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.XPATH, PUBLIC_URL_INPUT_XPATH))
+        )
+        public_url = public_url_input.get_attribute("value")
+        logging.info(f"✅ Successfully retrieved public URL: {public_url}")
+
+        # 4. Close the share dialog
+        WebDriverWait(driver, 20).until(
+            EC.element_to_be_clickable((By.XPATH, CLOSE_SHARE_DIALOG_BUTTON_XPATH))
+        ).click()
+        logging.info("Closed the share dialog.")
+
+        return public_url
+
+    except Exception:
+        logging.error(
+            "An error occurred while sharing the chat.", exc_info=True
+        )
+        save_debug_screenshot(driver, "share_chat_error")
+        # Fallback: try to press Escape to close any open dialogs
+        try:
+            driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+            logging.warning("Sent ESCAPE key to close lingering share dialog.")
+        except Exception as e:
+            logging.warning(f"Could not send ESCAPE key as a fallback: {e}")
+        return None
 
 def process_completed_job(
     driver: WebDriver, job: ResearchJob, config: Settings, service: Any
@@ -526,6 +585,7 @@ def process_completed_job(
         enter_prompt_and_submit(driver, FOLLOWUP_DEEPDIVE_PROMPT)
         summary_text = get_response(driver, res_before_summary, is_csv=False)
         gemini_chat_url = driver.current_url
+        logging.info(f"Gemini chat URL: {gemini_chat_url}")
 
         doc_url = export_and_get_doc_url(driver, job["handle"])
 
@@ -616,12 +676,14 @@ if __name__ == "__main__":
         config.chrome.profile_directory,
         config.chrome.chrome_driver_path,
         config.chrome.download_dir,
+        headless=False,  # Set to False for debugging
     )
     driver.get("https://gemini.google.com/app")
     input("Press Enter to continue...")
-    perform_daily_monitor_research(
-        driver,
-        "test",
-        "https://docs.google.com/document/d/1hpSthpQ3_Rn23LwA8a730N0oO2QD1lTce6QJ4mzkGug/edit?tab=t.0"
-        "",
-    )
+    # perform_daily_monitor_research(
+    #     driver,
+    #     "test",
+    #     "https://docs.google.com/document/d/1hpSthpQ3_Rn23LwA8a730N0oO2QD1lTce6QJ4mzkGug/edit?tab=t.0"
+    #     "",
+    # )
+    print(share_chat_and_get_public_url(driver))

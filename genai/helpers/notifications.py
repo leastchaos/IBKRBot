@@ -15,6 +15,7 @@ def send_report_to_telegram(
     task_type: str,
     target_chat_id: str | None = None,
     gemini_url: str = "https://gemini.google.com/app",
+    gemini_public_url: str | None = None,
 ) -> bool:
     """
     Sends a text message with a summary and a link to a Google Doc to one or more chats.
@@ -54,6 +55,8 @@ def send_report_to_telegram(
         f"**Report:** [Google Doc]({doc_url})\n"
         f"**Gemini Chat:** [Continue the conversation]({gemini_url})"
     )
+    if gemini_public_url:
+        message_text += f"\n**Public Link:** [View Public Chat]({gemini_public_url})"
 
     # --- Loop and send to all unique recipients ---
     all_successful = True
