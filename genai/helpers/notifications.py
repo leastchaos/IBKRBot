@@ -1,3 +1,4 @@
+# genai/helpers/notifications.py
 import requests
 import logging
 from typing import Any
@@ -16,6 +17,7 @@ def send_report_to_telegram(
     target_chat_id: str | None = None,
     gemini_url: str = "https://gemini.google.com/app",
     gemini_public_url: str | None = None,
+    gemini_account_name: str | None = None,
 ) -> bool:
     """
     Sends a text message with a summary and a link to a Google Doc to one or more chats.

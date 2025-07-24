@@ -63,6 +63,7 @@ class ResearchJob(TypedDict):
     requested_by: str | None
     error_recovery_attempted: bool
     task_type: str
+    account_name: str | None
 
 
 class ProcessingResult(TypedDict, total=False):
@@ -471,6 +472,7 @@ def _send_final_notification(
     task_type: str,
     target_chat_id: str | None,
     gemini_chat_url: str,
+    account_name: str | None = None,
     gemini_public_url: str | None = None,
 ):
     """Private helper to handle sending the final notification to Telegram."""
@@ -488,6 +490,7 @@ def _send_final_notification(
         target_chat_id=target_chat_id,
         gemini_url=gemini_chat_url,
         gemini_public_url=gemini_public_url,
+        gemini_account_name=account_name,
     )
 
 
@@ -575,8 +578,9 @@ def process_completed_job(
     """
     task_type = job["task_type"]
     company_name = job["company_name"]
+    account_name = job.get("account_name", None)
     logging.info(
-        f"✅ Research for '{company_name}' is COMPLETE. Starting post-processing workflow..."
+        f"✅ Research for '{company_name}' on account '{account_name}' is COMPLETE. Starting post-processing workflow..."
     )
 
     try:
@@ -618,13 +622,13 @@ def process_completed_job(
                 )
         _manage_google_drive_file(service, doc_id, config.drive, new_doc_title)
         _send_final_notification(
-            doc_url,
-            summary_text,
-            company_name,
-            config,
-            task_type,
-            target_chat_id,
-            gemini_chat_url,
+            doc_url=doc_url,
+            summary_text=summary_text,
+            company_name=company_name,
+            config=config,
+            task_type=task_type,
+            target_chat_id=target_chat_id,
+            gemini_chat_url=gemini_chat_url,
         )
 
         final_results: ProcessingResult = {
