@@ -630,6 +630,7 @@ def process_completed_job(
             config=config,
             task_type=task_type,
             target_chat_id=target_chat_id,
+            account_name=account_name,
             gemini_chat_url=gemini_chat_url,
         )
 

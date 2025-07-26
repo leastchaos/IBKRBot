@@ -57,6 +57,8 @@ def send_report_to_telegram(
         f"**Report:** [Google Doc]({doc_url})\n"
         f"**Gemini Chat:** [Continue the conversation]({gemini_url})"
     )
+    if gemini_account_name:
+        message_text += f"\n**Gemini Account:** {gemini_account_name}"
     if gemini_public_url:
         message_text += f"\n**Public Link:** [View Public Chat]({gemini_public_url})"
 
