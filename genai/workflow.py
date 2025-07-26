@@ -91,6 +91,8 @@ def initialize_driver(
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
     chrome_options.add_argument(f"--profile-directory={profile_directory}")

@@ -12,6 +12,7 @@ class GeminiAccount:
     """Represents a single Gemini account profile."""
     name: str
     profile_directory: str
+    user_data_dir: str
     max_concurrent_jobs: int = 1 # Add this line
 
 

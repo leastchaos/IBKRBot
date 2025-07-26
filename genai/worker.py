@@ -510,7 +510,7 @@ def main(headless: bool = True) -> None:
             logging.info(f"Initializing WebDriver for persistent profile: '{account.profile_directory}'...")
 
             driver = initialize_driver(
-                user_data_dir=config.chrome.user_data_dir,
+                user_data_dir=account.user_data_dir,
                 profile_directory=account.profile_directory,
                 webdriver_path=config.chrome.chrome_driver_path,
                 download_dir=config.chrome.download_dir,
