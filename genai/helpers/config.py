@@ -1,20 +1,27 @@
+# genai/helpers/config.py
 import logging
 import os
 import json
 from dataclasses import dataclass
 
 # The path to your configuration file
-CONFIG_PATH = os.path.join(os.getcwd(), "credentials", "genai_config.json")
+CONFIG_PATH = os.path.join(os.getcwd(), "credentials", "genai_config_v2.json")
+
+@dataclass(frozen=True)
+class GeminiAccount:
+    """Represents a single Gemini account profile."""
+    name: str
+    profile_directory: str
+    max_concurrent_jobs: int = 1 # Add this line
 
 
 @dataclass(frozen=True)
 class ChromeSettings:
     """Configuration specific to the Selenium Chrome driver."""
     user_data_dir: str
-    profile_directory: str
+    accounts: list[GeminiAccount]
     download_dir: str
     chrome_driver_path: str | None = None
-
 
 
 @dataclass(frozen=True)
@@ -28,8 +35,8 @@ class TelegramSettings:
 @dataclass(frozen=True)
 class DriveSettings:
     """Configuration for Google Drive integration."""
-    folder_id: str | None = None
-    portfolio_sheet_url: str | None = None
+    folder_id: str
+    portfolio_sheet_url: str
     
 
 
@@ -64,14 +71,22 @@ class Settings:
         user_chrome_settings = user_config.get("chrome", {})
         
         # Define the default path directly for a Windows environment.
+        accounts_list = []
+        user_accounts_data = user_chrome_settings.get("accounts")
+        # User has provided a modern 'accounts' list
+        for acc_data in user_accounts_data:
+            if not "name" in acc_data or not "profile_directory" in acc_data:
+                logging.error("FATAL: Each account must have 'name' and 'profile_directory' fields.")
+                raise ValueError("Each account must have 'name' and 'profile_directory' fields.")
+            accounts_list.append(GeminiAccount(**acc_data))
+
         default_chrome_settings = {
             "user_data_dir": os.path.join(os.path.expanduser("~"), "AppData", "Local", "Google", "Chrome", "User Data"),
-            "profile_directory": "Default",
+            "download_dir": os.path.join(os.getcwd(), "downloads"),
             "chrome_driver_path": None,
-            "download_dir": os.path.join(os.getcwd(), "downloads")
         }
-        # User-provided settings will override the defaults
         final_chrome_config = default_chrome_settings | user_chrome_settings
+        final_chrome_config["accounts"] = accounts_list
         chrome_settings = ChromeSettings(**final_chrome_config)
 
         # --- Process mandatory settings ---

@@ -1,9 +1,10 @@
-# worker.py
 import logging
+import os
+import random
 import sqlite3
 import time
-from typing import Any
 from datetime import datetime, timedelta
+from typing import Any
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -13,7 +14,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from genai.constants import (
     DATABASE_PATH,
     JOB_TIMEOUT_SECONDS,
-    MAX_ACTIVE_RESEARCH_JOBS,
     MAX_RETRIES,
     MONITORING_INTERVAL_SECONDS,
     RESPONSE_CONTENT_CSS,
@@ -41,7 +41,6 @@ from genai.workflow import (
 )
 
 
-# --- Database Helper Functions (Unchanged) ---
 def handle_task_failure(conn: sqlite3.Connection, task_id: int, error_message: str):
     """
     Handles a failed task by checking its retry count and deciding whether to
@@ -49,7 +48,6 @@ def handle_task_failure(conn: sqlite3.Connection, task_id: int, error_message: s
     """
     cursor = conn.cursor()
     try:
-        # First, get the current retry count for the task
         cursor.execute("SELECT retry_count FROM tasks WHERE id = ?", (task_id,))
         result = cursor.fetchone()
         if not result:
@@ -59,7 +57,6 @@ def handle_task_failure(conn: sqlite3.Connection, task_id: int, error_message: s
         current_retries = result[0]
 
         if current_retries < MAX_RETRIES:
-            # Increment retry count and set status back to 'queued'
             new_retry_count = current_retries + 1
             logging.warning(
                 f"Task {task_id} failed. Retrying (attempt {new_retry_count}/{MAX_RETRIES}). "
@@ -70,7 +67,6 @@ def handle_task_failure(conn: sqlite3.Connection, task_id: int, error_message: s
                 (new_retry_count, task_id),
             )
         else:
-            # Max retries reached, mark as a permanent error
             logging.error(
                 f"Task {task_id} has failed after {MAX_RETRIES} retries. Marking as permanent error."
             )
@@ -150,7 +146,6 @@ def process_completed_screener(driver: WebDriver, job: ResearchJob) -> tuple[str
             driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
         )
         enter_prompt_and_submit(driver, EXTRACT_TICKERS_PROMPT)
-        # Use a shorter timeout for this simple extraction
         company_list = get_response(driver, responses_before, is_csv=True, timeout=120)
 
         if not company_list or not isinstance(company_list, list):
@@ -162,7 +157,6 @@ def process_completed_screener(driver: WebDriver, job: ResearchJob) -> tuple[str
         with sqlite3.connect(DATABASE_PATH) as conn:
             cursor = conn.cursor()
             for company in company_list:
-                # Ensure we only queue valid-looking tasks
                 if ":" not in company:
                     logging.warning(
                         f"Skipping invalid company format from screener: {company}"
@@ -174,7 +168,7 @@ def process_completed_screener(driver: WebDriver, job: ResearchJob) -> tuple[str
                 )
             conn.commit()
 
-        return "completed", {}  # Return empty dict as there are no "results" like a URL
+        return "completed", {}
 
     except Exception:
         logging.error(
@@ -192,13 +186,14 @@ def launch_research_task(
     company_name: str | None,
     requested_by: str | None,
     task_type: str,
-    config: Settings | None = None,
+    account_name: str,
+    config: Settings,
 ) -> ResearchJob | None:
     """
     Launches a research task in a new tab using a specified prompt.
     """
     logging.info(
-        f"Launching research for task ID: {task_id}, Type: {task_type}, Company: {company_name or 'N/A'}"
+        f"Launching research on account '{account_name}' for task ID: {task_id}, Type: {task_type}, Company: {company_name or 'N/A'}"
     )
     driver.switch_to.new_window("tab")
     new_handle: str = driver.current_window_handle
@@ -221,7 +216,6 @@ def launch_research_task(
 
             if report_info:
                 url, timestamp_str = report_info
-                # SQLite timestamp format is 'YYYY-MM-DD HH:MM:SS'
                 report_datetime = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
                 if datetime.now() - report_datetime <= timedelta(days=7):
                     report_url = url
@@ -232,14 +226,10 @@ def launch_research_task(
                     )
 
             if report_url:
-                # We have a recent report, proceed as normal daily monitor
                 success = perform_daily_monitor_research(
                     driver, prompt_template, report_url
                 )
             else:
-                # No report, or report is stale. Fall back to a full deep dive.
-                # THIS IS THE CRITICAL FIX: We must update the task's type in the database
-                # so that the generated report is correctly categorized as a deep dive.
                 logging.warning(
                     f"Task {task_id} is falling back to a deep dive. Updating task type in DB."
                 )
@@ -250,15 +240,14 @@ def launch_research_task(
                         (TaskType.COMPANY_DEEP_DIVE, task_id),
                     )
                     conn.commit()
-                # Also update the local variable to ensure the rest of the logic uses the new type.
                 task_type = TaskType.COMPANY_DEEP_DIVE
 
-                if not report_info:  # Only log this if there was no report at all
+                if not report_info:
                     logging.warning(
                         f"No previous report URL for {company_name} (task {task_id}). "
                         f"Falling back to a full deep dive analysis."
                     )
-                # Use the deep dive prompt instead
+
                 deep_dive_prompt_template = TASK_PROMPT_MAP.get(task_type)
                 if not deep_dive_prompt_template:
                     raise ValueError(
@@ -298,6 +287,7 @@ def launch_research_task(
             "requested_by": requested_by,
             "task_type": task_type,
             "error_recovery_attempted": False,
+            "account_name": account_name,
         }
         return new_job_details
 
@@ -315,11 +305,8 @@ def launch_research_task(
         return None
 
 
-# --- Decomposed Main Loop Functions ---
-
-
 def check_and_process_active_jobs(
-    driver: WebDriver,
+    driver_pool: dict[str, WebDriver],
     active_jobs: dict[int, ResearchJob],
     config: Settings,
     service: Any,
@@ -328,11 +315,11 @@ def check_and_process_active_jobs(
     completed_task_ids: list[int] = []
     for task_id, job in list(active_jobs.items()):
         try:
+            account_name = job["account_name"]
+            driver = driver_pool[account_name]
             driver.switch_to.window(job["handle"])
 
-            # If the job is NOT complete (export button not found), check for issues.
             if not driver.find_elements(By.XPATH, SHARE_EXPORT_BUTTON_XPATH):
-                # 1. Check for timeout
                 if time.time() - job["started_at"] > JOB_TIMEOUT_SECONDS:
                     logging.warning(
                         f"Task {task_id} for '{job['company_name']}' has timed out after "
@@ -341,9 +328,8 @@ def check_and_process_active_jobs(
                     with sqlite3.connect(DATABASE_PATH) as conn:
                         handle_task_failure(conn, task_id, "Job timed out")
                     completed_task_ids.append(task_id)
-                    continue  # Move to the next job
+                    continue
 
-                # 2. Check for a recoverable error message from Gemini
                 if not job.get("error_recovery_attempted"):
                     try:
                         all_responses = driver.find_elements(
@@ -368,10 +354,8 @@ def check_and_process_active_jobs(
                             f"Could not check for recoverable error on task {task_id}: {e}"
                         )
 
-                # If no issues, the job is just still running. Continue to the next job.
                 continue
 
-            # If we reach here, the job IS complete. Process it.
             logging.info(
                 f"Export button found for task {task_id}. Starting post-processing..."
             )
@@ -390,7 +374,7 @@ def check_and_process_active_jobs(
                         update_task_result(
                             conn, task_id, results["report_url"], results["summary"]
                         )
-                else:  # final_status is 'error'
+                else:
                     error_msg = results.get("error_message", "Post-processing failed.")
                     handle_task_failure(conn, task_id, error_msg)
 
@@ -413,113 +397,146 @@ def check_and_process_active_jobs(
 
 
 def cleanup_finished_jobs(
-    driver: WebDriver,
+    driver_pool: dict[str, WebDriver],
     active_jobs: dict[int, ResearchJob],
     completed_ids: list[int],
-    original_tab: str,
+    account_job_counts: dict[str, int],
+    original_tabs: dict[str, str],
 ) -> None:
     """Removes completed jobs from the active pool and closes their browser tabs."""
     for task_id in completed_ids:
         if task_id not in active_jobs:
             continue
 
-        handle = active_jobs.pop(task_id)["handle"]
-        logging.info(f"Task {task_id} processing finished. Closing tab.")
+        job = active_jobs.pop(task_id)
+        account_name = job["account_name"]
+        handle = job["handle"]
+        
+        if account_name in account_job_counts:
+            account_job_counts[account_name] -= 1
+            if account_job_counts[account_name] < 0:
+                account_job_counts[account_name] = 0
+        
+        logging.info(
+            f"Task {task_id} finished. Account '{account_name}' now running {account_job_counts.get(account_name, 0)} jobs. Closing tab."
+        )
         try:
+            driver = driver_pool[account_name]
+            original_tab = original_tabs[account_name]
             driver.switch_to.window(handle)
             driver.close()
-        except Exception as e:
-            logging.warning(f"Could not close window for task {task_id}: {e}")
-        finally:
             driver.switch_to.window(original_tab)
+        except Exception as e:
+            logging.warning(f"Could not close window for task {task_id} on account '{account_name}': {e}")
 
 
 def dispatch_new_task(
-    driver: WebDriver, num_active_jobs: int, config: Settings
+    driver_pool: dict[str, WebDriver],
+    account_job_counts: dict[str, int],
+    config: Settings,
 ) -> ResearchJob | None:
     """Checks for queued tasks and dispatches them if slots are available."""
-    if num_active_jobs >= MAX_ACTIVE_RESEARCH_JOBS:
-        return  # Guard clause: Exit if no slots are free.
+    account_to_use = None
+    shuffled_accounts = random.sample(config.chrome.accounts, k=len(config.chrome.accounts))
+
+    for account in shuffled_accounts:
+        current_jobs = account_job_counts.get(account.name, 0)
+        if current_jobs < account.max_concurrent_jobs:
+            account_to_use = account.name
+            break
+
+    if account_to_use is None:
+        return None
 
     with sqlite3.connect(DATABASE_PATH) as conn:
         task = get_next_queued_task(conn)
         if not task:
             return None
-
+            
+        account_job_counts[account_to_use] += 1
         task_id, company_name, task_type, requested_by = task
         update_task_status(conn, task_id, "processing")
+        driver = driver_pool[account_to_use]
 
         try:
-            # REFACTORED: All tasks are now dispatched through the same logic.
-            # For screener tasks, company_name will be None, which is fine.
-            # The prompt for the screener is self-contained.
             if task_type not in TASK_PROMPT_MAP:
                 error_msg = f"No prompt template found for task type '{task_type}'."
                 logging.error(f"Skipping task {task_id}. {error_msg}")
-                # Mark as a permanent error since it's a configuration issue
                 update_task_status(conn, task_id, "error", error_msg)
+                account_job_counts[account_to_use] -= 1
                 return None
 
             logging.info(
-                f"Dispatching task {task_id} ({task_type}) with selected prompt."
+                f"Dispatching task {task_id} ({task_type}) to account '{account_to_use}'"
             )
+            
             new_job = launch_research_task(
-                driver, task_id, company_name, requested_by, task_type, config
+                driver, task_id, company_name, requested_by, task_type, account_to_use, config
             )
             if not new_job:
                 handle_task_failure(
                     conn, task_id, "Failed to launch research in browser."
                 )
+                account_job_counts[account_to_use] -= 1
                 return None
 
             return new_job
 
         except Exception as e:
-            # This will catch failures from launch_research_task
             logging.error(f"Failed to dispatch task {task_id}.", exc_info=True)
             handle_task_failure(
                 conn, task_id, f"Failed during dispatch: {e.__class__.__name__}"
             )
+            account_job_counts[account_to_use] -= 1
             return None
-
-
-# --- Simplified main() Function ---
 
 
 def main(headless: bool = True) -> None:
     """The main worker loop that orchestrates all tasks."""
     setup_logging()
     config: Settings = get_settings()
-    service: Any = get_drive_service()
-    driver: WebDriver | None = None
+    service_api: Any = get_drive_service()
+    driver_pool: dict[str, WebDriver] = {}
+    original_tabs: dict[str, str] = {}
     active_jobs: dict[int, ResearchJob] = {}
-
+    account_job_counts: dict[str, int] = {}
+    
     try:
-        driver = initialize_driver(
-            config.chrome.user_data_dir,
-            config.chrome.profile_directory,
-            config.chrome.chrome_driver_path,
-            config.chrome.download_dir,
-            headless=headless,
-        )
-        original_tab: str = driver.current_window_handle
-        logging.info("Unified Worker started. Monitoring task queue...")
+        if not config.chrome.accounts:
+            logging.error("No accounts configured in settings. Exiting worker.")
+            return
+            
+        for account in config.chrome.accounts:
+            logging.info(f"Initializing WebDriver for persistent profile: '{account.profile_directory}'...")
+
+            driver = initialize_driver(
+                user_data_dir=config.chrome.user_data_dir,
+                profile_directory=account.profile_directory,
+                webdriver_path=config.chrome.chrome_driver_path,
+                download_dir=config.chrome.download_dir,
+                headless=headless,
+            )
+            driver_pool[account.name] = driver
+            original_tabs[account.name] = driver.current_window_handle
+            account_job_counts[account.name] = 0
+
+        logging.info(f"Unified Worker started with {len(driver_pool)} accounts. Monitoring task queue...")
 
         while True:
-            # The main loop is now extremely simple and readable.
             completed_ids = check_and_process_active_jobs(
-                driver, active_jobs, config, service
+                driver_pool, active_jobs, config, service_api
             )
 
             if completed_ids:
-                cleanup_finished_jobs(driver, active_jobs, completed_ids, original_tab)
-            driver.switch_to.window(original_tab)
-            new_job = dispatch_new_task(driver, len(active_jobs), config)
+                cleanup_finished_jobs(driver_pool, active_jobs, completed_ids, account_job_counts, original_tabs)
+
+            new_job = dispatch_new_task(driver_pool, account_job_counts, config)
             if new_job:
                 active_jobs[new_job["task_id"]] = new_job
-            driver.switch_to.window(original_tab)
+            
+            job_counts_str = ", ".join([f"{name}: {count}" for name, count in account_job_counts.items()])
             logging.debug(
-                f"Monitoring... {len(active_jobs)} active jobs. Sleeping for {MONITORING_INTERVAL_SECONDS}s."
+                f"Monitoring... {len(active_jobs)} active jobs. ({job_counts_str}). Sleeping for {MONITORING_INTERVAL_SECONDS}s."
             )
             time.sleep(MONITORING_INTERVAL_SECONDS)
 
@@ -529,14 +546,21 @@ def main(headless: bool = True) -> None:
         logging.critical(
             "A critical error occurred in the worker's main loop.", exc_info=True
         )
-        if driver:
-            save_debug_screenshot(driver, "worker_main_critical_error")
+        if driver_pool:
+            for account_name, driver in driver_pool.items():
+                save_debug_screenshot(
+                    driver, f"worker_main_critical_error_{account_name}"
+                )
+        logging.error(
+            "Worker encountered a critical error. Please check the logs for details."
+        )
     finally:
-        if driver:
-            logging.info("Closing WebDriver.")
-            driver.quit()
+        if driver_pool:
+            for account_name, driver in driver_pool.items():
+                logging.info(f"Closing WebDriver for account '{account_name}'.")
+                driver.quit()
         logging.info("Worker process terminated.")
 
 
 if __name__ == "__main__":
-    main(headless=False)  # Set to False for debugging with GUI
+    main(headless=False)

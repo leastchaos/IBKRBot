@@ -16,11 +16,10 @@ DATABASE_PATH = os.path.join(os.getcwd(), "genai", "database", "research_queue.d
 GEMINI_URL = "https://gemini.google.com/app"
 
 # --- Worker Settings ---
-MAX_ACTIVE_RESEARCH_JOBS = 2
-MONITORING_INTERVAL_SECONDS = 15
-MAX_RETRIES = 3
+MONITORING_INTERVAL_SECONDS = 10
+JOB_TIMEOUT_SECONDS = 2700  # 45 minutes
+MAX_RETRIES = 2
 TELEGRAM_USER_PREFIX = "telegram:"
-JOB_TIMEOUT_SECONDS = 60 * 60  # 30 minutes
 
 # --- NEW: Google API Constants ---
 # The scopes define the level of access the script requests.

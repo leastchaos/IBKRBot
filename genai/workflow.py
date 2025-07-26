@@ -63,7 +63,7 @@ class ResearchJob(TypedDict):
     requested_by: str | None
     error_recovery_attempted: bool
     task_type: str
-    account_name: str | None
+    account_name: str
 
 
 class ProcessingResult(TypedDict, total=False):
