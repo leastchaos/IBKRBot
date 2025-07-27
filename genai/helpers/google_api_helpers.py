@@ -1,3 +1,4 @@
+# genai/helpers/google_api_helpers.py
 import logging
 import os
 import re
@@ -14,77 +15,56 @@ from googleapiclient.errors import HttpError
 from genai.constants import GDRIVE_SCOPES, GDRIVE_TOKEN_PATH, GDRIVE_CREDENTIALS_PATH
 
 
-def _load_or_refresh_credentials() -> Credentials | None:
+def _load_or_refresh_credentials(account_name: str) -> Credentials | None:
     """
-    Private helper to handle the logic of loading, refreshing, or creating credentials.
-    This function contains the nested logic and returns a valid credential object or None.
+    Private helper to handle loading, refreshing, or creating credentials
+    for a specific account.
     """
+    # --- MODIFIED: Create a unique token path for each account ---
+    token_path = os.path.join(os.getcwd(), "credentials", f"{account_name}_token.json")
+    
     creds = None
-    # 1. Try to load existing token
-    if os.path.exists(GDRIVE_TOKEN_PATH):
-        creds = Credentials.from_authorized_user_file(GDRIVE_TOKEN_PATH, GDRIVE_SCOPES)
+    if os.path.exists(token_path):
+        creds = Credentials.from_authorized_user_file(token_path, GDRIVE_SCOPES)
 
-    # 2. If credentials are valid, we're done. Return early.
     if creds and creds.valid:
         return creds
 
-    # 3. If credentials have expired, try to refresh them.
     if creds and creds.expired and creds.refresh_token:
-        logging.info("Attempting to refresh expired Google API credentials...")
         try:
             creds.refresh(Request())
-            # If refresh was successful, save the new token and return
-            with open(GDRIVE_TOKEN_PATH, "w") as token:
-                token.write(creds.to_json())
-            logging.info("Google API credentials refreshed and saved.")
-            return creds
-        except exceptions.RefreshError as e:
-            logging.warning(f"Failed to refresh token: {e}")
-            logging.warning(
-                "The refresh token is likely revoked. Deleting old token and forcing re-authentication."
-            )
-            if os.path.exists(GDRIVE_TOKEN_PATH):
-                os.remove(GDRIVE_TOKEN_PATH)
-            # Fall through to re-authenticate by letting creds be None or invalid.
-            creds = None
+        except exceptions.RefreshError:
+            if os.path.exists(token_path):
+                os.remove(token_path)
+            creds = None # Force re-authentication
 
-    # 4. If we get here, we need to perform the full, first-time authentication.
-    # This happens if no token exists, or if the refresh token was revoked.
-    logging.info("Performing first-time authentication for Google Drive API...")
-    flow = InstalledAppFlow.from_client_secrets_file(
-        GDRIVE_CREDENTIALS_PATH, GDRIVE_SCOPES
-    )
-    creds = flow.run_local_server(port=0)
-    with open(GDRIVE_TOKEN_PATH, "w") as token:
+    if not creds:
+        flow = InstalledAppFlow.from_client_secrets_file(
+            GDRIVE_CREDENTIALS_PATH, GDRIVE_SCOPES
+        )
+        creds = flow.run_local_server(port=0)
+
+    # Save the new or refreshed token to the account-specific file
+    with open(token_path, "w") as token:
         token.write(creds.to_json())
-    logging.info("Google API credentials created and saved.")
+    logging.info(f"Google API credentials saved for account '{account_name}'.")
     return creds
 
 
-def get_drive_service() -> Resource | None:
+def get_drive_service(account_name: str) -> Resource | None:
     """
-    Authenticates with the Google Drive API. This is the main public function.
-    It's now simpler, delegating the complex credential logic to a helper.
+    Authenticates with the Google Drive API for a specific account.
     """
     try:
-        creds = _load_or_refresh_credentials()
-        # Guard clause: If we couldn't get credentials, we can't proceed.
+        # --- MODIFIED: Pass the account name down ---
+        logging.info(f"Authenticating Google Drive service for account: {account_name}")
+        creds = _load_or_refresh_credentials(account_name)
         if not creds:
-            raise RuntimeError("Failed to obtain valid Google API credentials.")
-
+            raise RuntimeError(f"Failed to obtain valid credentials for {account_name}.")
         return build("drive", "v3", credentials=creds)
-
-    except FileNotFoundError:
+    except Exception:
         logging.error(
-            f"FATAL: Google Drive credentials file not found at '{GDRIVE_CREDENTIALS_PATH}'."
-        )
-        logging.error(
-            "Please ensure you have set up Google Cloud API access and placed the file correctly."
-        )
-        return None
-    except Exception as e:
-        logging.error(
-            "An unexpected error occurred during Google Drive authentication.",
+            f"An unexpected error occurred during Google Drive authentication for {account_name}.",
             exc_info=True,
         )
         return None
@@ -161,7 +141,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     # 1. Get the service object ONCE.
     logging.info("Authenticating and getting Google Drive service...")
-    drive_service = get_drive_service()
+    drive_service = get_drive_service("geminiprojapan")
 
     # 2. Guard clause: Only proceed if authentication was successful.
     if not drive_service:

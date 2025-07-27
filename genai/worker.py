@@ -10,7 +10,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-
+from selenium.common.exceptions import NoSuchWindowException
 from genai.constants import (
     DATABASE_PATH,
     JOB_TIMEOUT_SECONDS,
@@ -309,13 +309,19 @@ def check_and_process_active_jobs(
     driver_pool: dict[str, WebDriver],
     active_jobs: dict[int, ResearchJob],
     config: Settings,
-    service: Any,
-) -> list[int]:
+) -> tuple[list[int], set[str]]:
     """Checks all active jobs, processes any that are complete, and returns their IDs."""
     completed_task_ids: list[int] = []
+    crashed_accounts: set[str] = set()
     for task_id, job in list(active_jobs.items()):
+        account_name = job["account_name"]
+        if account_name in crashed_accounts:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                handle_task_failure(conn, task_id, "Browser session crashed")
+            completed_task_ids.append(task_id)
+            continue
         try:
-            account_name = job["account_name"]
+
             driver = driver_pool[account_name]
             driver.switch_to.window(job["handle"])
 
@@ -349,6 +355,7 @@ def check_and_process_active_jobs(
                             )
                             job["error_recovery_attempted"] = True
                             enter_prompt_and_submit(driver, "continue research")
+
                     except Exception as e:
                         logging.warning(
                             f"Could not check for recoverable error on task {task_id}: {e}"
@@ -363,9 +370,7 @@ def check_and_process_active_jobs(
             if job.get("task_type") == TaskType.UNDERVALUED_SCREENER:
                 final_status, results = process_completed_screener(driver, job)
             else:
-                final_status, results = process_completed_job(
-                    driver, job, config, service
-                )
+                final_status, results = process_completed_job(driver, job, config)
 
             with sqlite3.connect(DATABASE_PATH) as conn:
                 if final_status == "completed":
@@ -379,7 +384,14 @@ def check_and_process_active_jobs(
                     handle_task_failure(conn, task_id, error_msg)
 
             completed_task_ids.append(task_id)
-
+        except NoSuchWindowException:
+            logging.warning(
+                f"Browser window for task {task_id} has been closed. Marking as failed."
+            )
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                handle_task_failure(conn, task_id, "Browser window closed")
+            completed_task_ids.append(task_id)
+            crashed_accounts.add(account_name)
         except Exception as e:
             error_str = (
                 f"Worker failed while checking job status: {e.__class__.__name__}"
@@ -393,7 +405,7 @@ def check_and_process_active_jobs(
                 handle_task_failure(conn, task_id, error_str)
             completed_task_ids.append(task_id)
 
-    return completed_task_ids
+    return completed_task_ids, crashed_accounts
 
 
 def cleanup_finished_jobs(
@@ -411,12 +423,12 @@ def cleanup_finished_jobs(
         job = active_jobs.pop(task_id)
         account_name = job["account_name"]
         handle = job["handle"]
-        
+
         if account_name in account_job_counts:
             account_job_counts[account_name] -= 1
             if account_job_counts[account_name] < 0:
                 account_job_counts[account_name] = 0
-        
+
         logging.info(
             f"Task {task_id} finished. Account '{account_name}' now running {account_job_counts.get(account_name, 0)} jobs. Closing tab."
         )
@@ -427,7 +439,9 @@ def cleanup_finished_jobs(
             driver.close()
             driver.switch_to.window(original_tab)
         except Exception as e:
-            logging.warning(f"Could not close window for task {task_id} on account '{account_name}': {e}")
+            logging.warning(
+                f"Could not close window for task {task_id} on account '{account_name}': {e}"
+            )
 
 
 def dispatch_new_task(
@@ -437,7 +451,9 @@ def dispatch_new_task(
 ) -> ResearchJob | None:
     """Checks for queued tasks and dispatches them if slots are available."""
     account_to_use = None
-    shuffled_accounts = random.sample(config.chrome.accounts, k=len(config.chrome.accounts))
+    shuffled_accounts = random.sample(
+        config.chrome.accounts, k=len(config.chrome.accounts)
+    )
 
     for account in shuffled_accounts:
         current_jobs = account_job_counts.get(account.name, 0)
@@ -452,7 +468,7 @@ def dispatch_new_task(
         task = get_next_queued_task(conn)
         if not task:
             return None
-            
+
         account_job_counts[account_to_use] += 1
         task_id, company_name, task_type, requested_by = task
         update_task_status(conn, task_id, "processing")
@@ -469,9 +485,15 @@ def dispatch_new_task(
             logging.info(
                 f"Dispatching task {task_id} ({task_type}) to account '{account_to_use}'"
             )
-            
+
             new_job = launch_research_task(
-                driver, task_id, company_name, requested_by, task_type, account_to_use, config
+                driver,
+                task_id,
+                company_name,
+                requested_by,
+                task_type,
+                account_to_use,
+                config,
             )
             if not new_job:
                 handle_task_failure(
@@ -495,46 +517,75 @@ def main(headless: bool = True) -> None:
     """The main worker loop that orchestrates all tasks."""
     setup_logging()
     config: Settings = get_settings()
-    service_api: Any = get_drive_service()
     driver_pool: dict[str, WebDriver] = {}
     original_tabs: dict[str, str] = {}
     active_jobs: dict[int, ResearchJob] = {}
     account_job_counts: dict[str, int] = {}
-    
+
     try:
         if not config.chrome.accounts:
             logging.error("No accounts configured in settings. Exiting worker.")
             return
-            
-        for account in config.chrome.accounts:
-            logging.info(f"Initializing WebDriver for persistent profile: '{account.profile_directory}'...")
-
-            driver = initialize_driver(
-                user_data_dir=account.user_data_dir,
-                profile_directory=account.profile_directory,
-                webdriver_path=config.chrome.chrome_driver_path,
-                download_dir=config.chrome.download_dir,
-                headless=headless,
-            )
-            driver_pool[account.name] = driver
-            original_tabs[account.name] = driver.current_window_handle
-            account_job_counts[account.name] = 0
-
-        logging.info(f"Unified Worker started with {len(driver_pool)} accounts. Monitoring task queue...")
 
         while True:
-            completed_ids = check_and_process_active_jobs(
-                driver_pool, active_jobs, config, service_api
+            for account in config.chrome.accounts:
+                if account.name in driver_pool:
+                    continue
+                logging.info(
+                    f"Initializing or Restarting WebDriver for persistent profile: '{account.profile_directory}'..."
+                )
+                try:
+                    driver = initialize_driver(
+                        user_data_dir=account.user_data_dir,
+                        profile_directory=account.profile_directory,
+                        webdriver_path=config.chrome.chrome_driver_path,
+                        download_dir=config.chrome.download_dir,
+                        headless=headless,
+                    )
+                    driver_pool[account.name] = driver
+                    original_tabs[account.name] = driver.current_window_handle
+                    account_job_counts[account.name] = 0
+                except Exception as e:
+                    logging.error(
+                        f"Failed to initialize WebDriver for account '{account.name}': {e}",
+                        exc_info=True,
+                    )
+                    continue
+
+            logging.info(
+                f"Unified Worker started with {len(driver_pool)} accounts. Monitoring task queue..."
             )
 
+            completed_ids, crashed_accounts = check_and_process_active_jobs(
+                driver_pool, active_jobs, config
+            )
+            if crashed_accounts:
+                logging.warning(
+                    f"Detected crashed accounts: {', '.join(crashed_accounts)}. "
+                    "Attempting to reinitialize WebDrivers for these accounts."
+                )
+                for account_name in crashed_accounts:
+                    if account_name in driver_pool:
+                        driver_pool[account_name].quit()
+                        del driver_pool[account_name]
+                        del original_tabs[account_name]
+                        del account_job_counts[account_name]
             if completed_ids:
-                cleanup_finished_jobs(driver_pool, active_jobs, completed_ids, account_job_counts, original_tabs)
+                cleanup_finished_jobs(
+                    driver_pool,
+                    active_jobs,
+                    completed_ids,
+                    account_job_counts,
+                    original_tabs,
+                )
 
             new_job = dispatch_new_task(driver_pool, account_job_counts, config)
             if new_job:
                 active_jobs[new_job["task_id"]] = new_job
-            
-            job_counts_str = ", ".join([f"{name}: {count}" for name, count in account_job_counts.items()])
+
+            job_counts_str = ", ".join(
+                [f"{name}: {count}" for name, count in account_job_counts.items()]
+            )
             logging.debug(
                 f"Monitoring... {len(active_jobs)} active jobs. ({job_counts_str}). Sleeping for {MONITORING_INTERVAL_SECONDS}s."
             )
@@ -563,4 +614,4 @@ def main(headless: bool = True) -> None:
 
 
 if __name__ == "__main__":
-    main(headless=False)
+    main(headless=True)

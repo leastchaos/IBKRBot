@@ -573,14 +573,20 @@ def share_chat_and_get_public_url(driver: WebDriver) -> str | None:
         return None
 
 def process_completed_job(
-    driver: WebDriver, job: ResearchJob, config: Settings, service: Any
+    driver: WebDriver, job: ResearchJob, config: Settings
 ) -> tuple[str, ProcessingResult]:
     """
     Processes a completed job by orchestrating summary, export, and notification steps.
     """
     task_type = job["task_type"]
     company_name = job["company_name"]
-    account_name = job.get("account_name", None)
+    account_name = job["account_name"]
+    service = get_drive_service(account_name)
+    if not service:
+        logging.error(
+            f"Failed to get Google Drive service for account '{account_name}'. Cannot proceed."
+        )
+        return "error", {"error_message": "Failed to authenticate with Google Drive."}
     logging.info(
         f"✅ Research for '{company_name}' on account '{account_name}' is COMPLETE. Starting post-processing workflow..."
     )
