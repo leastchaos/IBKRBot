@@ -12,7 +12,7 @@ from googleapiclient.discovery import build, Resource
 from googleapiclient.errors import HttpError
 
 # --- Internal imports ---
-from genai.constants import GDRIVE_SCOPES, GDRIVE_TOKEN_PATH, GDRIVE_CREDENTIALS_PATH
+from genai.constants import GDRIVE_SCOPES
 
 
 def _load_or_refresh_credentials(account_name: str) -> Credentials | None:
@@ -22,7 +22,14 @@ def _load_or_refresh_credentials(account_name: str) -> Credentials | None:
     """
     # --- MODIFIED: Create a unique token path for each account ---
     token_path = os.path.join(os.getcwd(), "credentials", f"{account_name}_token.json")
-    
+    account_specific_creds_path = os.path.join(
+        os.getcwd(), "credentials", f"{account_name}_credentials.json"
+    )
+    if not os.path.exists(account_specific_creds_path):
+        logging.error(
+            f"Credentials file for account '{account_name}' does not exist: {account_specific_creds_path}"
+        )
+        return None
     creds = None
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, GDRIVE_SCOPES)
@@ -40,7 +47,7 @@ def _load_or_refresh_credentials(account_name: str) -> Credentials | None:
 
     if not creds:
         flow = InstalledAppFlow.from_client_secrets_file(
-            GDRIVE_CREDENTIALS_PATH, GDRIVE_SCOPES
+            account_specific_creds_path, GDRIVE_SCOPES
         )
         creds = flow.run_local_server(port=0)
 
@@ -141,7 +148,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     # 1. Get the service object ONCE.
     logging.info("Authenticating and getting Google Drive service...")
-    drive_service = get_drive_service("geminiprojapan")
+    drive_service = get_drive_service("leastchaos")
 
     # 2. Guard clause: Only proceed if authentication was successful.
     if not drive_service:

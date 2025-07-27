@@ -23,6 +23,7 @@ from genai.helpers.google_api_helpers import (
     move_file_to_folder,
     rename_google_doc,
     share_google_doc_publicly,
+    get_drive_service,
 )
 from genai.helpers.notifications import send_report_to_telegram
 from genai.helpers.prompt_text import PROMPT_BUY_RANGE_CHECK, FOLLOWUP_DEEPDIVE_PROMPT
@@ -682,7 +683,7 @@ if __name__ == "__main__":
 
     setup_logging()
     config = get_settings()
-    service = get_drive_service()
+    service = get_drive_service("geminiprojapan")
     driver = None
 
     driver = initialize_driver(
