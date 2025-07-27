@@ -1,15 +1,11 @@
 import logging
-import os
 import random
 import sqlite3
 import time
 from datetime import datetime, timedelta
-from typing import Any
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import NoSuchWindowException
 from genai.constants import (
     DATABASE_PATH,
@@ -24,7 +20,6 @@ from genai.constants import (
     TaskType,
 )
 from genai.helpers.config import Settings, get_settings
-from genai.helpers.google_api_helpers import get_drive_service
 from genai.helpers.helpers import save_debug_screenshot
 from genai.helpers.logging_config import setup_logging
 from genai.helpers.prompt_text import EXTRACT_TICKERS_PROMPT
