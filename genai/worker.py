@@ -16,7 +16,7 @@ from genai.constants import (
     SOMETHING_WENT_WRONG_RESPONSE,
     TaskType,
 )
-from genai.helpers.config import Settings, get_settings
+from genai.helpers.config import Settings, get_settings, load_prompts
 from genai.helpers.helpers import save_debug_screenshot
 from genai.helpers.logging_config import setup_logging
 from genai.helpers.prompt_text import EXTRACT_TICKERS_PROMPT
@@ -98,8 +98,8 @@ def launch_research_task(
 
     try:
         navigate_to_url(driver)
-
-        prompt_template = TASK_PROMPT_MAP.get(task_type)
+        prompts = load_prompts()
+        prompt_template = prompts.get(task_type)
         if not prompt_template:
             raise ValueError(f"No prompt template for task type '{task_type}'")
 

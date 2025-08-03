@@ -490,7 +490,7 @@ def _send_final_notification(
         doc_url=doc_url,
         config=config.telegram,
         task_type=task_type,
-        target_chat_id=target_chat_id,
+        target_chat_id=None, # Use None to default to config.chat_id
         gemini_url=gemini_chat_url,
         gemini_public_url=gemini_public_url,
         gemini_account_name=account_name,

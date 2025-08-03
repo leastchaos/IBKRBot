@@ -44,6 +44,25 @@ Every investment has risks. Identify 2-3 primary risks to your thesis (e.g., exe
 5. Actionable Strategy
 Buy Range: Determine a precise price range for initiating a position (e.g., "$50.00 - $55.00").
 Price Target / Exit Range: Define a realistic price target based on your valuation analysis for taking profits or re-evaluating the position post-catalyst (e.g., "$75.00 - $80.00").
+
+**6. Conclusion**
+Provide a concise summary of your investment thesis in the following format:
+//-- EXECUTIVE SUMMARY START --//
+Investment Thesis: Initiate a BUY rating on [Company Name & Ticker] and [Company Name & Ticker (if applicable)]. These companies are significantly undervalued by the market, poised for near-term rallies driven by specific catalysts, and possess robust long-term fundamentals and competitive moats that justify a multi-year hold.
+
+Price Targets:
+
+[Company 1 Name & Ticker]: Fair Value Price Target of [Price Target]
+
+[Company 2 Name & Ticker (if applicable)]: Fair Value Price Target of [Price Target]
+
+Actionable Strategy - Buy Ranges:
+
+[Company 1 Name & Ticker]: Initiate Long Position within the range of [Buy Range].
+
+[Company 2 Name & Ticker (if applicable)]: Initiate Long Position within the range of [Buy Range].
+//-- EXECUTIVE SUMMARY END --//
+
 """
 EXTRACT_TICKERS_PROMPT = """Analyze the preceding report and extract the main stock tickers being analyzed and its corresponding primary stock exchange.
 Your response must contain ONLY a comma-separated list of exchange-ticker pairs using the format EXCHANGE:TICKER.
@@ -98,9 +117,13 @@ For all recommended strategies, provide a Timing Verdict (e.g., "Execute now," "
 7. Risk Assessment:
 Identify and explain the key risks to your investment thesis. These could include macroeconomic factors, competitive threats, regulatory changes, or company-specific execution risks.
 8. Conclusion & Recommendation:
+
+//-- EXECUTIVE SUMMARY START --//
 Reiterate your investment thesis (Buy/Sell/Hold).
 Provide a specific price target.
 Define a clear price range for entering a long position or exiting an existing position.
+//-- EXECUTIVE SUMMARY END --//
+
 Your analysis should be based solely on publicly available information up to the present date.
 
 The stock ticker to be analyzed is """
@@ -155,6 +178,8 @@ Once you have the context from Part 1, perform the following analysis for the id
 //-- REQUIRED OUTPUT & RECOMMENDATION --//
 Structure your final response *exactly* as follows, filling in the data from your analysis:
 
+//-- EXECUTIVE SUMMARY START --//
+
 **Ticker:** {TICKER from Doc}
 **Current Price:** {$XX.XX}
 **Status:** (e.g., Within Buy Range / Below Buy Range / Above Buy Range)
@@ -165,6 +190,8 @@ Structure your final response *exactly* as follows, filling in the data from you
 *   **EXECUTE FULL POSITION:** "Multiple indicators confirm a strong entry point..."
 **Key Justification:** (A concise summary of your findings from the tactical analysis, e.g., "Price is $51.20, in the lower half of the buy range. It is finding support at the 50-day moving average, and the RSI is moving out of oversold territory. However, market sentiment is weak today. Recommend initiating a partial position...")
 **Options Overlay Suggestion:** (Provide the specific options recommendation from Part 3. State "N/A" if initiating a new position or if no options action is advised. Examples: "Now is an optimal time to sell the [Date] $[Strike] covered call." or "Consider buying the [Date] $[Strike] put to hedge while exiting the position.")
+
+//-- EXECUTIVE SUMMARY END --//
 """
 
 
@@ -363,6 +390,22 @@ Reiterate the "Initiate Short" call, the price target, and the price range for e
 
 Your analysis should be based solely on publicly available information up to the present date.
 
+//-- FINAL INSTRUCTION: EXECUTIVE SUMMARY --//
+After completing your entire, detailed analysis, create one final section below. This section must contain ONLY the Executive Summary block, formatted exactly as shown below. 
+It is critical that this summary is a high-fidelity representation of the key findings from your detailed analysis above. Adapt your specific findings to fit this generic format by pulling the key data from your report.
+
+//-- EXECUTIVE SUMMARY START --//
+
+**Ticker:** [TICKER]
+**Stance:** [Your final, core recommendation]
+**Key Price Levels:**
+- Action Range: [Your defined entry/action range]
+- Target / Exit: [Your defined price target or exit level]
+**Thesis Summary:**
+[A concise, well-written summary of the core thesis and rationale.]
+
+//-- EXECUTIVE SUMMARY END --//
+
 The stock ticker to be analyzed is:"""
 
 BUY_THE_DIP_DEEPDIVE_PROMPT = """Objective: To analyze a stock after a significant price drop, differentiating between a temporary overreaction (a bounce opportunity) and a fundamental decline (a value trap), with a heightened sensitivity to short-term market dynamics.
@@ -499,68 +542,21 @@ Plan subsequent purchases at pre-defined lower support levels or after a technic
 
 Justification: This approach is justified if the conclusion is "Contrarian Value," where the long-term fundamentals (Phase 2) are deemed solid despite the current crisis. It prioritizes achieving a good average cost over timing the bottom.
 
-Risk/Reward: Lower immediate risk by not deploying all capital at once. The main risk is "catching a falling knife" if the fundamental thesis is wrong, but the damage is averaged down."""
+Risk/Reward: Lower immediate risk by not deploying all capital at once. The main risk is "catching a falling knife" if the fundamental thesis is wrong, but the damage is averaged down.
 
+//-- FINAL INSTRUCTION: EXECUTIVE SUMMARY --//
+After completing your entire, detailed analysis, create one final section below. This section must contain ONLY the Executive Summary block, formatted exactly as shown below. 
+It is critical that this summary is a high-fidelity representation of the key findings from your detailed analysis above. Adapt your specific findings to fit this generic format by pulling the key data from your report.
 
-BUY_THE_DIP_SCREENER_PROMPT = """Objective: "I need to generate a list of publicly traded companies that are potential candidates for a contrarian investment strategy. The goal is to identify stocks that have recently experienced a significant price drop but may be fundamentally sound and oversold."
+//-- EXECUTIVE SUMMARY START --//
 
-Screening Criteria:
+**Ticker:** [TICKER]
+**Stance:** [Your final, core recommendation]
+**Key Price Levels:**
+- Action Range: [Your defined entry/action range]
+- Target / Exit: [Your defined price target or exit level]
+**Thesis Summary:**
+[A concise, well-written summary of the core thesis and rationale.]
 
-Financial Health:
-
-Find companies with a positive Free Cash Flow (FCF) for the last four consecutive quarters.
-
-Ensure the company has a current ratio (Current Assets / Current Liabilities) greater than 1.5.
-
-The company's Debt-to-Equity (D/E) ratio should be below the industry average.
-
-Recent Price Action (The "Drop"):
-
-The stock price has dropped by at least 15% in the last 30 days.
-
-The stock is currently trading at least 20% below its 52-week high.
-
-Valuation & Growth:
-
-The Forward P/E Ratio should be below its 5-year historical average.
-
-Revenue growth (year-over-year) for the last reported quarter should be positive.
-
-The stock's Price-to-Book (P/B) ratio should be below 3.
-
-Technical Indicators (The "Oversold" Signal):
-
-The Relative Strength Index (RSI) should be below 35.
-
-The stock's price is currently below its 50-day and 200-day moving averages.
-
-Market & Exclusions:
-
-Exclude companies with a market capitalization below $2 billion (to focus on more established companies).
-
-Exclude companies that have reported a significant and persistent decline in revenue or have recently been embroiled in a major corporate scandal.
-
-Output Requirements:
-
-Provide the results in a clear, formatted table.
-
-For each company that meets the criteria, include the following data points in the table:
-
-Ticker Symbol
-
-Company Name
-
-Industry
-
-Recent Price Drop Percentage (30-day)
-
-Current RSI
-
-Forward P/E Ratio
-
-Revenue Growth (YoY)
-
-Do not provide any analysis or opinions on the companies. The purpose of this output is to generate a raw list of candidates for further deep-dive research.
-
-Final Instruction: "Please run the screener based on the above criteria and provide the results."
-"""
+//-- EXECUTIVE SUMMARY END --//
+The stock ticker to be analyzed is:"""
