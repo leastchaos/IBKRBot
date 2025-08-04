@@ -20,6 +20,7 @@ from selenium.common.exceptions import TimeoutException, StaleElementReferenceEx
 from genai.helpers.config import DriveSettings, Settings
 from genai.helpers.google_api_helpers import (
     get_doc_id_from_url,
+    get_google_doc_content,
     move_file_to_folder,
     rename_google_doc,
     share_google_doc_publicly,
@@ -593,11 +594,6 @@ def process_completed_job(
     )
 
     try:
-        res_before_summary = len(
-            driver.find_elements(By.CSS_SELECTOR, RESPONSE_CONTENT_CSS)
-        )
-        enter_prompt_and_submit(driver, FOLLOWUP_DEEPDIVE_PROMPT)
-        summary_text = get_response(driver, res_before_summary, is_csv=False)
         gemini_chat_url = driver.current_url
         logging.info(f"Gemini chat URL: {gemini_chat_url}")
 
@@ -616,6 +612,24 @@ def process_completed_job(
             )
 
         doc_id = get_doc_id_from_url(doc_url)
+        if not doc_id:
+            
+                # 2. Fetch the full report's text content from the Google Doc itself.
+        full_report_text = get_google_doc_content(service, doc_id)
+        if not full_report_text:
+            raise ValueError(f"Failed to fetch content from the Google Doc (ID: {doc_id}).")
+
+        # 3. Now, parse the fetched content for the executive summary.
+        summary_marker = "//-- EXECUTIVE SUMMARY START --//"
+        summary_parts = full_report_text.split(summary_marker)
+        if len(summary_parts) > 1:
+            summary_text = summary_marker + summary_parts[1].strip()
+            logging.info(f"Successfully extracted executive summary for {company_name}.")
+        else:
+            logging.warning(f"Could not find executive summary marker for {company_name}. Using a default message.")
+            summary_text = "Executive summary could not be automatically extracted from the report."
+        
+        logging.info(f"Summary: {summary_text}")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         new_doc_title = f"{timestamp}_{company_name}_{task_type}"
 

@@ -142,6 +142,32 @@ def get_doc_id_from_url(url: str) -> str | None:
     logging.warning(f"Could not extract a valid document ID from URL: {url}")
     return None
 
+def get_google_doc_content(service: Resource, document_id: str) -> str | None:
+    """
+    Fetches the content of a Google Doc by exporting it as plain text.
+
+    Args:
+        service: The authenticated Google Drive API service instance.
+        document_id: The ID of the Google Document.
+
+    Returns:
+        The text content of the document, or None if an error occurs.
+    """
+    try:
+        logging.info(f"Fetching content for Google Doc ID: {document_id}")
+        # Request the document to be exported as plain text
+        request = service.files().export_media(fileId=document_id, mimeType="text/plain")
+        
+        # Execute the request and get the content
+        response = request.execute()
+        
+        # The content is in bytes, so decode it to a string
+        content = response.decode('utf-8')
+        logging.info(f"Successfully fetched and decoded content for Doc ID: {document_id}")
+        return content
+    except Exception as e:
+        logging.error(f"Failed to get content for Google Doc ID {document_id}: {e}", exc_info=True)
+        return "Failed to fetch content from the Google Doc. Please check the document ID or your permissions."
 
 if __name__ == "__main__":
     # This block demonstrates a more robust and linear way to use the functions.
@@ -181,13 +207,25 @@ if __name__ == "__main__":
         # return
 
     logging.info(f"Extracted Document ID: {doc_id}")
+    # 4. Fetch the content of the document.
+    content = get_google_doc_content(drive_service, doc_id)
 
-    # 4. Chain the operations, using guard clauses to ensure robustness.
-    # First, try to move the file if a folder ID is provided.
-    if reports_folder_id:
-        if not move_file_to_folder(drive_service, doc_id, reports_folder_id):
-            logging.error(f"Failed to move file {doc_id}, will not proceed with sharing.")
-            # return  # Stop here if move fails
+    # 5. Guard clause: Only proceed if content was successfully fetched.
+    if not content:
+        logging.warning(
+            "Halting process for this URL because content could not be fetched."
+        )
+        # return
+    logging.info(f"Content fetched successfully for Doc ID: {doc_id}")
+    print(f"Document Content:\n{content[:500]}...")  # Print first 500 chars
+    # # 4. Chain the operations, using guard clauses to ensure robustness.
+    # # First, try to move the file if a folder ID is provided.
+    # if reports_folder_id:
+    #     if not move_file_to_folder(drive_service, doc_id, reports_folder_id):
+    #         logging.error(f"Failed to move file {doc_id}, will not proceed with sharing.")
+    #         # return  # Stop here if move fails
 
-    # If we are here, either move was successful or not required. Proceed to share.
-    share_google_doc_publicly(drive_service, doc_id)
+    # # If we are here, either move was successful or not required. Proceed to share.
+    # share_google_doc_publicly(drive_service, doc_id)
+
+
