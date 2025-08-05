@@ -612,10 +612,10 @@ def process_completed_job(
             )
 
         doc_id = get_doc_id_from_url(doc_url)
-        if not doc_id:
-            
-                # 2. Fetch the full report's text content from the Google Doc itself.
-        full_report_text = get_google_doc_content(service, doc_id)
+        full_report_text = None
+        if doc_id:
+            logging.error(f"Failed to extract document ID from URL: {doc_url}")
+            full_report_text = get_google_doc_content(service, doc_id)
         if not full_report_text:
             raise ValueError(f"Failed to fetch content from the Google Doc (ID: {doc_id}).")
 
