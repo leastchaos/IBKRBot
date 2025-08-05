@@ -2,15 +2,6 @@
 from enum import Enum
 import os
 
-from genai.helpers.prompt_text import (
-    PORTFOLIO_REVIEW_PROMPT,
-    SCANNER_PROMPT,
-    DEEPDIVE_PROMPT,
-    SHORT_DEEPDIVE_PROMPT,
-    TACTICAL_PROMPT,
-    BUY_THE_DIP_DEEPDIVE_PROMPT,
-)
-
 # --- Application-Wide Constants ---
 DATABASE_PATH = os.path.join(os.getcwd(), "genai", "database", "research_queue.db")
 GEMINI_URL = "https://gemini.google.com/app"
@@ -68,13 +59,4 @@ class TaskType(str, Enum):
     PORTFOLIO_REVIEW = "portfolio_review"
     SHORT_COMPANY_DEEP_DIVE = "short_company_deep_dive"
     BUY_THE_DIP = "buy_the_dip"
-
-
-TASK_PROMPT_MAP = {
-    TaskType.COMPANY_DEEP_DIVE: DEEPDIVE_PROMPT,
-    TaskType.DAILY_MONITOR: TACTICAL_PROMPT,
-    TaskType.UNDERVALUED_SCREENER: SCANNER_PROMPT,
-    TaskType.PORTFOLIO_REVIEW: PORTFOLIO_REVIEW_PROMPT,
-    TaskType.SHORT_COMPANY_DEEP_DIVE: SHORT_DEEPDIVE_PROMPT,
-    TaskType.BUY_THE_DIP: BUY_THE_DIP_DEEPDIVE_PROMPT,
-}
+    COVERED_CALL_REVIEW = "covered_call_strategy_review"

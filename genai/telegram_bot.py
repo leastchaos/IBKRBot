@@ -49,6 +49,11 @@ def _create_start_menu(update: Update) -> InlineKeyboardMarkup:
                     "Trigger Portfolio Review", callback_data="trigger_portfolio"
                 ),
                 InlineKeyboardButton(
+                    "Trigger Covered Call Review", callback_data="trigger_covered_call"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     "⚠️ Clear Unstarted Queue", callback_data="clear_unstarted_queue"
                 ),
             ],
@@ -378,6 +383,41 @@ async def trigger_portfolio_review_command(
 
     return message_text
 
+async def trigger_covered_call_review_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
+    """(Admin-only) Triggers a covered call review."""
+    message_text = ""
+    if not _is_admin(update):
+        message_text = "⛔️ Sorry, this is an admin-only command."
+    else:
+        try:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO tasks (task_type, requested_by) VALUES (?, ?)",
+                    (
+                        TaskType.COVERED_CALL_REVIEW,
+                        f"telegram_admin:{update.effective_user.id}",
+                    ),
+                )
+                conn.commit()
+            logging.info(
+                f"Admin {update.effective_user.id} manually triggered the 'covered call review' task."
+            )
+            message_text = "✅ The 'covered call review' task has been queued."
+        except sqlite3.Error as e:
+            logging.error(
+                f"Database error during 'covered call review' task scheduling: {e}",
+                exc_info=True,
+            )
+            message_text = "Sorry, there was a database error while queuing the 'covered call review' task."
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text=message_text)
+    elif update.message:
+        await update.message.reply_text(text=message_text)
+
+    return message_text
+
 
 async def trigger_screener_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -482,6 +522,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         current_message = await trigger_daily_command(update, context)
     elif command == "trigger_portfolio":
         current_message = await trigger_portfolio_review_command(update, context)
+    elif command == "trigger_covered_call":
+        current_message = await trigger_covered_call_review_command(update, context)
     else:
         # This can be used to update the message if the button is no longer valid
         await query.edit_message_text(text=f"Action '{command}' is not implemented.")
@@ -534,6 +576,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(CommandHandler("triggerscreener", trigger_screener_command))
     application.add_handler(CommandHandler("triggerdaily", trigger_daily_command))
+    application.add_handler(CommandHandler("triggercoveredcall", trigger_covered_call_review_command))
 
     logging.info("Telegram bot started and polling for messages...")
     # Run the bot until the user presses Ctrl-C

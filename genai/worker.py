@@ -11,7 +11,6 @@ from genai.constants import (
     MONITORING_INTERVAL_SECONDS,
     RESPONSE_CONTENT_CSS,
     SHARE_EXPORT_BUTTON_XPATH,
-    TASK_PROMPT_MAP,
     RECOVERABLE_ERROR_PHRASE,
     SOMETHING_WENT_WRONG_RESPONSE,
     TaskType,
@@ -139,7 +138,7 @@ def launch_research_task(
                         f"Falling back to a full deep dive analysis."
                     )
 
-                deep_dive_prompt_template = TASK_PROMPT_MAP.get(task_type)
+                deep_dive_prompt_template = prompts.get(task_type)
                 if not deep_dive_prompt_template:
                     raise ValueError(
                         f"No prompt template for fallback task type '{TaskType.COMPANY_DEEP_DIVE}'"
@@ -159,7 +158,10 @@ def launch_research_task(
             prompt = f"{prompt_template} {company_name}."
             success = perform_deep_research(driver, prompt)
 
-        elif task_type == TaskType.PORTFOLIO_REVIEW:
+        elif task_type in [
+            TaskType.PORTFOLIO_REVIEW,
+            TaskType.COVERED_CALL_REVIEW,
+        ]:
             success = perform_portfolio_review(
                 driver, prompt_template, config.drive.portfolio_sheet_url
             )
@@ -340,7 +342,7 @@ def dispatch_new_task(
     shuffled_accounts = random.sample(
         config.chrome.accounts, k=len(config.chrome.accounts)
     )
-
+    prompts = load_prompts()
     for account in shuffled_accounts:
         current_jobs = account_job_counts.get(account.name, 0)
         if current_jobs < account.max_concurrent_jobs:
@@ -361,7 +363,7 @@ def dispatch_new_task(
     driver = driver_pool[account_to_use]
 
     try:
-        if task_type not in TASK_PROMPT_MAP:
+        if task_type not in prompts:
             error_msg = f"No prompt template found for task type '{task_type}'."
             logging.error(f"Skipping task {task_id}. {error_msg}")
             update_task_status(task_id, "error", error_msg)

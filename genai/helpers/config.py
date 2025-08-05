@@ -12,7 +12,7 @@ def load_prompts() -> dict[str, str]:
     """Loads and returns the prompts from the prompts.yml file."""
     prompts_path = os.path.join(os.getcwd(), "genai", "prompts.yml")
     try:
-        with open(prompts_path, "r") as f:
+        with open(prompts_path, "r", encoding="utf-8") as f:
             return yaml.load(f, Loader=SafeLoader)
     except FileNotFoundError:
         logging.error(f"FATAL: Prompts file not found at {prompts_path}.")
