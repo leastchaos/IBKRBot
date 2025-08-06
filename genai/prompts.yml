@@ -141,7 +141,8 @@ FOLLOWUP_DEEPDIVE_PROMPT: |
   [A concise, summary of the investment thesis from the report, suitable for a message not exceeding 4000 characters.]
   """
 
-  TACTICAL_PROMPT = """You are a tactical execution analyst. A Google Doc containing a full, pre-approved investment thesis for a stock has been attached to this session. Your task is to use that document as context to determine if today is an opportune moment to initiate a position/adjust a position held.
+daily_monitor: |
+  """You are a tactical execution analyst. A Google Doc containing a full, pre-approved investment thesis for a stock has been attached to this session. Your task is to use that document as context to determine if today is an opportune moment to initiate a position/adjust a position held.
 
   //-- ANALYSIS PROTOCOL --//
 

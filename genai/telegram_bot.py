@@ -19,7 +19,10 @@ def _is_admin(update: Update) -> bool:
     """Checks if the user issuing the command is the configured admin."""
     config = get_settings()
     # Ensure the configured admin_id is a string for comparison
-    admin_id = str(config.telegram.admin_id) if config.telegram else None
+    admin_id = str(config.telegram.admin_id)
+    if not update.effective_user:
+        logging.warning("No effective user found in the update. Cannot check admin status.")
+        return False
     user_id = str(update.effective_user.id)
 
     if not admin_id or user_id != admin_id:

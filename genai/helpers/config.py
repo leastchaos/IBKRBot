@@ -57,9 +57,8 @@ class TelegramSettings:
 @dataclass(frozen=True)
 class DriveSettings:
     """Configuration for Google Drive integration."""
-
-    folder_id: str
     portfolio_sheet_url: str
+    folder_id: str | None = None  # Optional, can be None if not used
 
 
 @dataclass(frozen=True)

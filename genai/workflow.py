@@ -599,13 +599,6 @@ def process_completed_job(
 
         doc_url = export_and_get_doc_url(driver, job["handle"])
 
-        if not summary_text or not isinstance(summary_text, str):
-            logging.warning(
-                f"Failed to retrieve a valid summary for {company_name}. Using a default message."
-            )
-            summary_text = "Failed to provide summary."
-        logging.info(f"Summary: {summary_text}")
-
         if not doc_url:
             raise ValueError(
                 "Failed to get a valid Doc URL from Gemini. Cannot proceed."
@@ -614,21 +607,27 @@ def process_completed_job(
         doc_id = get_doc_id_from_url(doc_url)
         full_report_text = None
         if doc_id:
-            logging.error(f"Failed to extract document ID from URL: {doc_url}")
+            logging.info(f"Google Doc ID: {doc_id}")
             full_report_text = get_google_doc_content(service, doc_id)
         if not full_report_text:
             raise ValueError(f"Failed to fetch content from the Google Doc (ID: {doc_id}).")
 
         # 3. Now, parse the fetched content for the executive summary.
         summary_marker = "//-- EXECUTIVE SUMMARY START --//"
+        
         summary_parts = full_report_text.split(summary_marker)
         if len(summary_parts) > 1:
-            summary_text = summary_marker + summary_parts[1].strip()
-            logging.info(f"Successfully extracted executive summary for {company_name}.")
+            summary_text = summary_parts[1].strip()
+            logging.info(f"Successfully extracted executive summary for {company_name}.")   
         else:
             logging.warning(f"Could not find executive summary marker for {company_name}. Using a default message.")
             summary_text = "Executive summary could not be automatically extracted from the report."
-        
+        summary_end = "//-- EXECUTIVE SUMMARY END --//"
+        if summary_end in summary_text:
+            summary_text = summary_text.split(summary_end)[0].strip()
+        # limit the summary to 4000 characters
+        if len(summary_text) > 4000:
+            summary_text = summary_text[:4000] + "..."
         logging.info(f"Summary: {summary_text}")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         new_doc_title = f"{timestamp}_{company_name}_{task_type}"
@@ -667,7 +666,12 @@ def process_completed_job(
             enter_prompt_and_submit(driver, PROMPT_BUY_RANGE_CHECK)
             # Use a shorter timeout for this simple YES/NO check
             check_response = get_response(driver, res_before_check, timeout=900)
-
+            if not isinstance(check_response, str):
+                logging.error(
+                    f"Expected a string response for buy-range check, got: {type(check_response)}"
+                )
+                final_results["error_message"] = "Buy-range check did not return a valid response."
+                return "error", final_results
             if check_response and "YES" in check_response.upper():
                 logging.info(
                     f"'{company_name}' is in buy range. Queuing follow-up task."
@@ -702,7 +706,7 @@ if __name__ == "__main__":
 
     driver = initialize_driver(
         config.chrome.user_data_dir,
-        config.chrome.profile_directory,
+        config.chrome.accounts[0].profile_directory,
         config.chrome.chrome_driver_path,
         config.chrome.download_dir,
         headless=False,  # Set to False for debugging

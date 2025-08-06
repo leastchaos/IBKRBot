@@ -1,3 +1,5 @@
+# genai/worker.py
+
 import logging
 import random
 import time
@@ -5,7 +7,7 @@ from datetime import datetime, timedelta
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.common.exceptions import NoSuchWindowException
+from selenium.common.exceptions import NoSuchWindowException, WebDriverException
 from genai.constants import (
     JOB_TIMEOUT_SECONDS,
     MONITORING_INTERVAL_SECONDS,
@@ -428,14 +430,19 @@ def main(headless: bool = True) -> None:
             if crashed_accounts:
                 logging.warning(
                     f"Detected crashed accounts: {', '.join(crashed_accounts)}. "
-                    "Attempting to reinitialize WebDrivers for these accounts."
+                    "These will be restarted on the next loop iteration."
                 )
                 for account_name in crashed_accounts:
                     if account_name in driver_pool:
-                        driver_pool[account_name].quit()
+                        try:
+                            driver_pool[account_name].quit()
+                        except Exception:
+                            pass # Ignore errors on quit
                         del driver_pool[account_name]
-                        del original_tabs[account_name]
-                        del account_job_counts[account_name]
+                        if account_name in original_tabs:
+                            del original_tabs[account_name]
+                        if account_name in account_job_counts:
+                            del account_job_counts[account_name]
             if completed_ids:
                 cleanup_finished_jobs(
                     driver_pool,
@@ -479,29 +486,49 @@ def main(headless: bool = True) -> None:
         logging.info("Worker process terminated.")
 
 def _ensure_drivers_are_running(headless, config, driver_pool, original_tabs, account_job_counts):
+    """
+    Ensures that a WebDriver instance is running and responsive for each configured account.
+    If a driver has crashed, it is removed and a new one is initialized.
+    """
     for account in config.chrome.accounts:
         if account.name in driver_pool:
-            continue
-        logging.info(
-                    f"Initializing or Restarting WebDriver for persistent profile: '{account.profile_directory}'..."
+            try:
+                # A lightweight check to see if the browser is still responsive.
+                _ = driver_pool[account.name].window_handles
+            except (NoSuchWindowException, WebDriverException):
+                logging.warning(
+                    f"Driver for account '{account.name}' is unresponsive or has crashed. It will be restarted."
                 )
-        try:
-            driver = initialize_driver(
-                        user_data_dir=account.user_data_dir,
-                        profile_directory=account.profile_directory,
-                        webdriver_path=config.chrome.chrome_driver_path,
-                        download_dir=config.chrome.download_dir,
-                        headless=headless,
-                    )
-            driver_pool[account.name] = driver
-            original_tabs[account.name] = driver.current_window_handle
-            account_job_counts[account.name] = 0
-        except Exception as e:
-            logging.error(
-                        f"Failed to initialize WebDriver for account '{account.name}': {e}",
-                        exc_info=True,
-                    )
-            continue
+                try:
+                    driver_pool[account.name].quit()
+                except Exception:
+                    pass  # Ignore errors if quit fails, driver is likely already dead.
+                del driver_pool[account.name]
+                if account.name in original_tabs:
+                    del original_tabs[account.name]
+                # Job count will be reset when the driver is re-initialized.
+
+        if account.name not in driver_pool:
+            logging.info(
+                f"Initializing or Restarting WebDriver for profile: '{account.profile_directory}'..."
+            )
+            try:
+                driver = initialize_driver(
+                    user_data_dir=account.user_data_dir,
+                    profile_directory=account.profile_directory,
+                    webdriver_path=config.chrome.chrome_driver_path,
+                    download_dir=config.chrome.download_dir,
+                    headless=headless,
+                )
+                driver_pool[account.name] = driver
+                original_tabs[account.name] = driver.current_window_handle
+                account_job_counts[account.name] = 0  # Reset job count for new/restarted driver
+            except Exception as e:
+                logging.error(
+                    f"Failed to initialize WebDriver for account '{account.name}': {e}",
+                    exc_info=True,
+                )
+                continue
 
 
 if __name__ == "__main__":
