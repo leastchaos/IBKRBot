@@ -176,7 +176,7 @@ def launch_research_task(
         new_job_details: ResearchJob = {
             "task_id": task_id,
             "handle": new_handle,
-            "company_name": company_name or "Not Required",
+            "company_name": company_name or task_type,
             "status": "processing",
             "started_at": time.time(),
             "requested_by": requested_by,
