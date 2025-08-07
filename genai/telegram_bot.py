@@ -426,33 +426,37 @@ async def trigger_screener_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> str:
     """(Admin-only) Manually queues the undervalued screener task."""
-    message_text = ""
     if not _is_admin(update):
         message_text = "⛔️ Sorry, this is an admin-only command."
-    else:
-        try:
-            with sqlite3.connect(DATABASE_PATH) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO tasks (task_type, requested_by) VALUES (?, ?)",
-                    (
-                        TaskType.UNDERVALUED_SCREENER,
-                        f"telegram_admin:{update.effective_user.id}",
-                    ),
-                )
-                conn.commit()
-            logging.info(
-                f"Admin {update.effective_user.id} manually triggered the screener task."
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text=message_text)
+        elif update.message:
+            await update.message.reply_text(text=message_text)
+        return message_text
+
+    try:
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO tasks (task_type, requested_by) VALUES (?, ?)",
+                (
+                    TaskType.UNDERVALUED_SCREENER,
+                    f"telegram_admin:{update.effective_user.id if update.effective_user else 'unknown'}",
+                ),
             )
-            message_text = "✅ Undervalued screener task has been queued."
-        except sqlite3.Error as e:
-            logging.error(
-                f"Database error during manual screener scheduling: {e}",
-                exc_info=True,
-            )
-            message_text = (
-                "Sorry, there was a database error while queuing the screener."
-            )
+            conn.commit()
+        logging.info(
+            f"Admin {update.effective_user.id if update.effective_user else 'unknown'} manually triggered the screener task."
+        )
+        message_text = "✅ Undervalued screener task has been queued."
+    except sqlite3.Error as e:
+        logging.error(
+            f"Database error during manual screener scheduling: {e}",
+            exc_info=True,
+        )
+        message_text = (
+            "Sorry, there was a database error while queuing the screener."
+        )
 
     if update.callback_query:
         await update.callback_query.edit_message_text(text=message_text)
@@ -460,7 +464,6 @@ async def trigger_screener_command(
         await update.message.reply_text(text=message_text)
 
     return message_text
-
 async def trigger_daily_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> str:
@@ -479,7 +482,7 @@ async def trigger_daily_command(
                         "The daily monitoring list is empty. Nothing to queue."
                     )
                 else:
-                    requested_by = f"telegram_admin:{update.effective_user.id}"
+                    requested_by = f"telegram_admin:{update.effective_user.id if update.effective_user else 'unknown'}"
                     for company in companies_to_monitor:
                         cursor.execute(
                             "INSERT INTO tasks (company_name, requested_by, task_type) VALUES (?, ?, ?)",
@@ -487,7 +490,7 @@ async def trigger_daily_command(
                         )
                     conn.commit()
                     logging.info(
-                        f"Admin {update.effective_user.id} manually triggered {len(companies_to_monitor)} daily tasks."
+                        f"Admin {update.effective_user.id if update.effective_user else 'unknown'} manually triggered {len(companies_to_monitor)} daily tasks."
                     )
                     message_text = f"✅ Successfully queued {len(companies_to_monitor)} daily monitoring tasks."
         except sqlite3.Error as e:
@@ -509,6 +512,9 @@ async def trigger_daily_command(
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Parses the CallbackQuery and runs the appropriate command."""
     query = update.callback_query
+    if not query:
+        logging.warning("No callback query found in the update.")
+        return
     # Acknowledge the button press to remove the "loading" state on the user's screen
     await query.answer()
 

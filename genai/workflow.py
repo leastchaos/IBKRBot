@@ -89,7 +89,7 @@ def initialize_driver(
     """Initializes and returns a Selenium WebDriver instance for Chrome."""
     chrome_options = Options()
     if headless:
-        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])

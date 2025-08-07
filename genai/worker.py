@@ -552,4 +552,4 @@ def _ensure_drivers_are_running(
 
 
 if __name__ == "__main__":
-    main(headless=False)
+    main(headless=True)
