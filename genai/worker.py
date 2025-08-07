@@ -354,7 +354,6 @@ def dispatch_new_task(
     if account_to_use is None:
         return None
 
-
     task = get_next_queued_task()
     if not task:
         return None
@@ -386,9 +385,7 @@ def dispatch_new_task(
             config,
         )
         if not new_job:
-            handle_task_failure(
-                task_id, "Failed to launch research in browser."
-            )
+            handle_task_failure(task_id, "Failed to launch research in browser.")
             account_job_counts[account_to_use] -= 1
             return None
 
@@ -396,9 +393,7 @@ def dispatch_new_task(
 
     except Exception as e:
         logging.error(f"Failed to dispatch task {task_id}.", exc_info=True)
-        handle_task_failure(
-            task_id, f"Failed during dispatch: {e.__class__.__name__}"
-        )
+        handle_task_failure(task_id, f"Failed during dispatch: {e.__class__.__name__}")
         account_job_counts[account_to_use] -= 1
         return None
 
@@ -418,7 +413,9 @@ def main(headless: bool = True) -> None:
             return
 
         while True:
-            _ensure_drivers_are_running(headless, config, driver_pool, original_tabs, account_job_counts)
+            _ensure_drivers_are_running(
+                headless, config, driver_pool, original_tabs, account_job_counts
+            )
             if not driver_pool:
                 logging.error("No WebDriver instances could be initialized.")
                 time.sleep(MONITORING_INTERVAL_SECONDS)
@@ -437,7 +434,7 @@ def main(headless: bool = True) -> None:
                         try:
                             driver_pool[account_name].quit()
                         except Exception:
-                            pass # Ignore errors on quit
+                            pass  # Ignore errors on quit
                         del driver_pool[account_name]
                         if account_name in original_tabs:
                             del original_tabs[account_name]
@@ -485,19 +482,38 @@ def main(headless: bool = True) -> None:
                 driver.quit()
         logging.info("Worker process terminated.")
 
-def _ensure_drivers_are_running(headless, config, driver_pool, original_tabs, account_job_counts):
+
+def _ensure_drivers_are_running(
+    headless: bool,
+    config: Settings,
+    driver_pool: dict[str, WebDriver],
+    original_tabs: dict[str, str],
+    account_job_counts: dict[str, int],
+) -> None:
     """
     Ensures that a WebDriver instance is running and responsive for each configured account.
     If a driver has crashed, it is removed and a new one is initialized.
     """
     for account in config.chrome.accounts:
+        driver_crashed = False
         if account.name in driver_pool:
             try:
-                # A lightweight check to see if the browser is still responsive.
-                _ = driver_pool[account.name].window_handles
+                # A driver is considered crashed if it has no open windows or throws an exception.
+                # Perform a "heartbeat" check by opening and closing a new tab.
+                driver = driver_pool[account.name]
+                original_handle = driver.current_window_handle
+                driver.switch_to.new_window('tab')
+                driver.close()
+                driver.switch_to.window(original_handle)
             except (NoSuchWindowException, WebDriverException):
                 logging.warning(
-                    f"Driver for account '{account.name}' is unresponsive or has crashed. It will be restarted."
+                    f"Driver for account '{account.name}' is not responding."
+                )
+                driver_crashed = True
+
+            if driver_crashed:
+                logging.warning(
+                    f"Attempting to restart driver for account '{account.name}'."
                 )
                 try:
                     driver_pool[account.name].quit()
@@ -506,7 +522,9 @@ def _ensure_drivers_are_running(headless, config, driver_pool, original_tabs, ac
                 del driver_pool[account.name]
                 if account.name in original_tabs:
                     del original_tabs[account.name]
-                # Job count will be reset when the driver is re-initialized.
+                if account.name in account_job_counts:
+                    # Also remove from job counts as we are starting fresh
+                    del account_job_counts[account.name]
 
         if account.name not in driver_pool:
             logging.info(
@@ -522,7 +540,9 @@ def _ensure_drivers_are_running(headless, config, driver_pool, original_tabs, ac
                 )
                 driver_pool[account.name] = driver
                 original_tabs[account.name] = driver.current_window_handle
-                account_job_counts[account.name] = 0  # Reset job count for new/restarted driver
+                account_job_counts[account.name] = (
+                    0  # Reset job count for new/restarted driver
+                )
             except Exception as e:
                 logging.error(
                     f"Failed to initialize WebDriver for account '{account.name}': {e}",
