@@ -5,6 +5,9 @@ import re
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from genai.constants import TaskType
+from genai.helpers.config import load_prompts
+
 # To prevent circular imports with type hints
 if TYPE_CHECKING:
     from selenium.webdriver.remote.webdriver import WebDriver
@@ -69,3 +72,13 @@ def save_debug_screenshot(driver: "WebDriver", filename_prefix: str):
     except Exception as e:
         # Log if screenshot fails, but don't crash the main exception handling
         logging.error(f"Failed to save debug screenshot: {e}", exc_info=True)
+
+
+def get_prompt(task_type: str, date_format: str = "%Y-%m-%d") -> str | None:
+    prompts = load_prompts()
+    prompt_template = prompts.get(task_type)
+    if prompt_template:
+        if date_format:
+            prompt_template = prompt_template.replace("[CURRENT_DATE]", datetime.now().strftime(date_format))
+        return prompt_template
+    return None

@@ -575,15 +575,43 @@ buy_the_dip: |
 
 
 covered_call_strategy_review: |
-  Act as an expert-level options trading strategist and fundamental analyst. Your primary objective is to analyze my stock portfolio from the provided IBKRdata.csv to determine the optimal covered call strategy for EVERY US and HK holding. Your recommendations must be the product of your own independent analysis.
+  Act as an expert-level options trading strategist and fundamental analyst. Your primary objective is to analyze my entire portfolio from the provided IBKRdata.csv to create a complete covered call action plan. This involves:
 
-  You will systematically analyze each stock, determine its fair value, and then integrate that finding with technical analysis to propose a trade. Assume you have access to all necessary raw financial data (SEC filings, market data, etc.) to perform this analysis.
+  Recommending management actions (Roll or Hold) for existing covered call positions.
+  You will systematically analyze EVERY US and HK listed stock, determine its fair value, and then integrate that finding with technical analysis to propose a trade. 
+  Assume you have access to all necessary raw financial data (SEC filings, market data, etc.) to perform this analysis.
 
-  Portfolio Data Source: IBKRdata.csv (Assume columns include: Ticker, Quantity, Cost_Basis)
+  Identifying new covered call opportunities on uncovered stock positions.
 
-  Part 1: Analysis, Verdict, and Strategic Path
-  For every long stock position in the portfolio not already fully covered, perform the following suitability screening.
+  Your recommendations must be the product of your own independent analysis. Assume you have access to all necessary raw financial data.
+  Execution Date: For all calculations, the current date is [CURRENT_DATE].
+  Data Assumption: The IBKRdata.csv file contains details for both long stock positions (Ticker, Quantity, Cost_Basis) and any existing short call positions (Short_Strike, Short_Expiration, Premium_Received).
 
+  Part A: Management of Existing Covered Calls
+  For every stock position that is already covered by a short call, perform the following analysis to determine if the position should be rolled or held.
+
+  1. Analysis of Existing Position
+  Position Status: State the Ticker, Days to Expiration (DTE), and the current Profit/Loss on the short call (e.g., "Currently at a 70% profit").
+
+  Stock vs. Strike: Characterize the stock's current price relative to the short strike (e.g., "Challenged," "Well OTM," "Deep ITM").
+
+  Verdict & Rationale: Based on the status, provide one of two verdicts with a clear justification:
+
+  ✅ Roll Position: Recommended when a re-evaluation of the position shows a more favorable risk/reward profile by acting now. This can be triggered by: (a) capturing a majority of the premium where the remaining profit no longer justifies the risk, (b) a material change in the stock's technical or fundamental outlook since the trade was initiated, or (c) the need to adjust a challenged strike price.
+
+  Justification Example: "Roll. The stock's uptrend has accelerated, and our fundamental view has become more bullish. We should roll up and out to a higher strike to participate in more of the upside while booking our current gain."
+
+  ❌ Hold to Expiration: Recommended when the current trade dynamics remain optimal (e.g., a high rate of theta decay is still present), the outlook has not changed, and the position is performing as expected.
+
+  Justification Example: "Hold. With 20 DTE, the position is benefiting from rapid time decay, and the stock remains range-bound as anticipated. There is no compelling reason to close the trade early."
+
+  2. Action Plan for Rolling
+  If the verdict is ✅ Roll Position, proceed to execute Part B for that specific stock to determine the optimal new strike and expiration to roll to. Your analysis will be framed as a "Roll To" recommendation.
+
+  Part B: Analysis for New & Rolled Positions
+  Execute this full, detailed analysis for all uncovered stock positions, and for all existing positions that were marked ✅ Roll Position in Part A.
+
+  Part B.1: Analysis, Verdict, and Strategic Path
   1. Fundamental & Catalyst Review
   Earnings Snapshot: Briefly summarize the last quarterly earnings report, noting any significant beats or misses and the forward guidance provided.
 
@@ -614,31 +642,23 @@ covered_call_strategy_review: |
 
   ❌ No Action Recommended: Conditions are unfavorable for a covered call.
 
-  Provide a clear justification for your verdict. If "Prime" or "Acceptable," assign a Strategic Path ("Standard Path" or "Defensive Path") and proceed to Part 2.
+  Provide a clear justification for your verdict. If "Prime" or "Acceptable," assign a Strategic Path ("Standard Path" or "Defensive Path") and proceed to Part B.2.
 
-  Part 2: Covered Call Strategy & Trade Recommendation
-  Perform this part only for stocks classified as "Prime" or "Acceptable." For every 100 shares of a qualified holding, you will recommend selling one (1) contract.
-
+  Part B.2: Covered Call Strategy & Trade Recommendation
   1. Proposed Trade
-  Expiration: Recommend a specific monthly expiration date, typically 30-45 DTE (Days to Expiration), that avoids the next earnings report.
+  Expiration: Recommend a specific monthly expiration date, typically 30-45 DTE, that avoids the next earnings report.
 
-  Strike Price Selection (Integrated Rationale): Your strike selection must be a blend of your proprietary Fundamental Valuation from Part 1 and the Technical Levels. Your fundamental view will guide the aggressiveness of the strike selection.
+  Strike Price Selection (Integrated Rationale): Select a strike by blending your fundamental valuation with key technical levels.
 
-  Standard Path: Goal is to generate income while allowing the stock to reach a more appropriate valuation.
+  Standard Path (Undervalued/Fairly Valued): Prioritize upside. Choose a strike at a distant resistance or with a large buffer.
 
-  If Fundamentally Undervalued: Select a strike at a more distant but still significant resistance level, prioritizing upside capture.
+  Defensive Path (Overvalued/Breaking Down): Prioritize premium/hedging. Choose a strike closer to the current price, near the first major resistance.
 
-  If Fundamentally Fairly Valued: Select a strike with a healthy buffer zone above the nearest major resistance.
+  Justification: Explain how the strike aligns with both your fundamental conclusion and the technical chart.
 
-  Defensive Path: Goal is to maximize premium and/or hedge the position.
+  Example (Standard Path - Undervalued Stock): "The $175 strike is recommended. My analysis concludes the stock is fundamentally undervalued due to its accelerating revenue growth... The $175 strike aligns with a longer-term resistance level, providing ample room for the stock to run towards a more appropriate valuation."
 
-  If Fundamentally Overvalued or Technically Breaking Down: Select a strike closer to the current price, at or near the first major overhead resistance.
-
-  Justification: Justify the choice by explaining how the strike aligns with both a key technical level AND your independent fundamental conclusion.
-
-  Example (Standard Path - Undervalued Stock): "The $175 strike is recommended. My analysis concludes the stock is fundamentally undervalued due to its accelerating revenue growth and expanding margins, which are not yet reflected in its P/E ratio versus peers. While near-term resistance is at $160, the $175 strike aligns with a longer-term resistance level, providing ample room for the stock to run towards a more appropriate valuation."
-
-  Example (Defensive Path - Overvalued Stock): "The $90 strike is recommended. My analysis concludes the stock is fundamentally overvalued, trading at twice the P/S ratio of its peers despite slowing growth. Technically, it is struggling below the $91 level, which is the 50-day moving average. The $90 strike is just below this key resistance, maximizing premium and creating an attractive exit for an overstretched name."
+  Example (Defensive Path - Overvalued Stock): "The $90 strike is recommended. My analysis concludes the stock is fundamentally overvalued... The $90 strike is just below this key resistance, maximizing premium and creating an attractive exit for an overstretched name."
 
   2. Trade Metrics
   Option Premium: Current Bid/Ask spread and the Midpoint price.
@@ -649,16 +669,19 @@ covered_call_strategy_review: |
 
   Return on Capital (RoC) (Annualized): (Premium per Share / Current Stock Price) * (365 / DTE)
 
-  Return if Assigned: ((Strike Price + Premium per Share - Cost Basis) / Cost Basis) (Label as "Mitigated Loss" if negative).
+  Return if Assigned: ((Strike Price + Premium - Cost Basis) / Cost Basis) (Label as "Mitigated Loss" if negative).
 
   Option Delta (Informational): Provide the delta of the chosen option.
 
   3. Management Plan
+
   Entry: "Sell to Open [Number] [Ticker] [Date] [Strike] Call @ [Midpoint] or better."
 
-  Goal: Assignment is an acceptable outcome.
+  Goal: Emphasize that assignment is an acceptable and often successful outcome.
 
-  Management: State conditions for early profit-taking or rolling.
+  Management: Briefly state the conditions for active management, based on a re-evaluation of the trade, not a fixed profit target.
+
+  Example: "We will actively monitor this position. Consider an early exit or roll if the stock's technical trend breaks down, or if we capture a large portion of the extrinsic value very early in the expiration cycle, presenting a superior annualized return on a new position."
   Part 3: Executive Summary
   After presenting all detailed analyses, provide a concluding section that consolidates all recommendations into two clear tables for a quick overview.
 

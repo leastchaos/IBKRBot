@@ -18,7 +18,7 @@ from genai.constants import (
     TaskType,
 )
 from genai.helpers.config import Settings, get_settings, load_prompts
-from genai.helpers.helpers import save_debug_screenshot
+from genai.helpers.helpers import get_prompt, save_debug_screenshot
 from genai.helpers.logging_config import setup_logging
 from genai.helpers.prompt_text import EXTRACT_TICKERS_PROMPT
 from genai.workflow import (
@@ -99,8 +99,7 @@ def launch_research_task(
 
     try:
         navigate_to_url(driver)
-        prompts = load_prompts()
-        prompt_template = prompts.get(task_type)
+        prompt_template = get_prompt(task_type)
         if not prompt_template:
             raise ValueError(f"No prompt template for task type '{task_type}'")
 
@@ -344,7 +343,6 @@ def dispatch_new_task(
     shuffled_accounts = random.sample(
         config.chrome.accounts, k=len(config.chrome.accounts)
     )
-    prompts = load_prompts()
     for account in shuffled_accounts:
         current_jobs = account_job_counts.get(account.name, 0)
         if current_jobs < account.max_concurrent_jobs:
@@ -362,9 +360,9 @@ def dispatch_new_task(
     task_id, company_name, task_type, requested_by = task
     update_task_status(task_id, "processing")
     driver = driver_pool[account_to_use]
-
+    prompt_template = get_prompt(task_type)
     try:
-        if task_type not in prompts:
+        if not prompt_template:
             error_msg = f"No prompt template found for task type '{task_type}'."
             logging.error(f"Skipping task {task_id}. {error_msg}")
             update_task_status(task_id, "error", error_msg)
