@@ -575,40 +575,37 @@ buy_the_dip: |
 
 
 covered_call_strategy_review: |
-  Act as a professional options trading strategist. Your primary objective is to analyze my stock portfolio from the provided IBKRdata.csv to determine the optimal covered call strategy for EVERY US and HK holding. This includes identifying prime candidates for selling calls, recommending defensive actions on weakening stocks, and, crucially, advising when no action should be taken at all.
+  Act as an expert-level options trading strategist and fundamental analyst. Your primary objective is to analyze my stock portfolio from the provided IBKRdata.csv to determine the optimal covered call strategy for EVERY US and HK holding. Your recommendations must be the product of your own independent analysis.
 
-  Your analysis must be systematic, data-driven, and follow the structured two-part process below.
+  You will systematically analyze each stock, determine its fair value, and then integrate that finding with technical analysis to propose a trade. Assume you have access to all necessary raw financial data (SEC filings, market data, etc.) to perform this analysis.
 
   Portfolio Data Source: IBKRdata.csv (Assume columns include: Ticker, Quantity, Cost_Basis)
 
   Part 1: Analysis, Verdict, and Strategic Path
-
   For every long stock position in the portfolio not already fully covered, perform the following suitability screening.
 
-  1. Fundamental & Catalyst Review:
+  1. Fundamental & Catalyst Review
+  Earnings Snapshot: Briefly summarize the last quarterly earnings report, noting any significant beats or misses and the forward guidance provided.
 
+  Upcoming Catalysts: Identify the date of the next earnings report and list any other imminent, high-impact catalysts.
 
+  Fundamental Valuation: Perform your own analysis to determine if the stock is Overvalued, Fairly Valued, or Undervalued. Your conclusion must be based on a synthesis of:
 
-  Earnings Snapshot: Briefly summarize the last quarterly earnings report, noting any significant beats or misses.
+  Growth Prospects: Revenue and EPS growth trends and future outlook.
 
-  Upcoming Catalysts: Identify and list the date of the next earnings report or other imminent, high-impact catalysts.
+  Profitability & Moat: Key margins (Gross, Operating), Return on Equity (ROE), and any identifiable competitive advantages.
 
-  Overall Sentiment: State the current market sentiment (e.g., Bullish, Neutral, Bearish) based on recent news and analyst ratings.
+  Relative Valuation: Current valuation multiples (e.g., P/E, P/S, EV/EBITDA) compared to the company's own historical range and its direct sector peers.
+  State your final valuation verdict and provide a concise, one-sentence rationale for it.
 
-  2. Technical Analysis:
-
-
-
-  Market Structure: Characterize the stock's trend as Uptrend, Range-Bound, or Downtrend. Use key moving averages (e.g., 50-day and 200-day) and recent price action.
+  2. Technical Analysis
+  Market Structure: Characterize the stock's trend as Uptrend, Range-Bound, or Downtrend, justifying with key moving averages and recent price action.
 
   Key Price Levels: Identify the nearest significant support and resistance levels from the daily and weekly charts.
 
-  Implied Volatility (IV): State the current IV Rank (IVR) or IV Percentile (IVP).
+  Implied Volatility (IV): State the current Implied Volatility Rank (IVR). Classify it as High (>50), Moderate (25-50), or Low (<25).
 
-  3. Final Verdict & Justification:
-
-
-
+  3. Final Verdict & Justification
   Based on all the analysis above, classify the stock with one of the following three verdicts:
 
   ✅ Prime Candidate: Ideal conditions for selling a call now.
@@ -617,72 +614,68 @@ covered_call_strategy_review: |
 
   ❌ No Action Recommended: Conditions are unfavorable for a covered call.
 
-  Provide a clear justification for your verdict:
-
-  If "Prime" or "Acceptable": Assign a Strategic Path ("Standard Path" for neutral/bullish stocks or "Defensive Path" for bearish stocks) and proceed to Part 2.
-
-  If "No Action Recommended": Your analysis for this stock is complete. Justify your reasoning clearly (e.g., High Breakout Potential, Excessive Downside Risk, Poor Risk/Reward due to low IV, or High Uncertainty from a catalyst).
+  Provide a clear justification for your verdict. If "Prime" or "Acceptable," assign a Strategic Path ("Standard Path" or "Defensive Path") and proceed to Part 2.
 
   Part 2: Covered Call Strategy & Trade Recommendation
+  Perform this part only for stocks classified as "Prime" or "Acceptable." For every 100 shares of a qualified holding, you will recommend selling one (1) contract.
 
-  (Perform this part only for stocks classified as "Prime" or "Acceptable" in Part 1)
+  1. Proposed Trade
+  Expiration: Recommend a specific monthly expiration date, typically 30-45 DTE (Days to Expiration), that avoids the next earnings report.
 
-  For each qualified candidate, provide a ranked list of actionable trade recommendations.
+  Strike Price Selection (Integrated Rationale): Your strike selection must be a blend of your proprietary Fundamental Valuation from Part 1 and the Technical Levels. Your fundamental view will guide the aggressiveness of the strike selection.
 
-  1. Proposed Trade:
+  Standard Path: Goal is to generate income while allowing the stock to reach a more appropriate valuation.
 
+  If Fundamentally Undervalued: Select a strike at a more distant but still significant resistance level, prioritizing upside capture.
 
+  If Fundamentally Fairly Valued: Select a strike with a healthy buffer zone above the nearest major resistance.
 
-  Expiration: Recommend a specific monthly expiration date, typically 30-45 days out, that avoids major binary events.
+  Defensive Path: Goal is to maximize premium and/or hedge the position.
 
-  Strike Price Selection (Hybrid Approach):
+  If Fundamentally Overvalued or Technically Breaking Down: Select a strike closer to the current price, at or near the first major overhead resistance.
 
-  1. Prioritize Technicals: First, identify the most strategic strike price based on the chart.
+  Justification: Justify the choice by explaining how the strike aligns with both a key technical level AND your independent fundamental conclusion.
 
-  If Standard Path: Select a strike that is clearly above a significant resistance level.
+  Example (Standard Path - Undervalued Stock): "The $175 strike is recommended. My analysis concludes the stock is fundamentally undervalued due to its accelerating revenue growth and expanding margins, which are not yet reflected in its P/E ratio versus peers. While near-term resistance is at $160, the $175 strike aligns with a longer-term resistance level, providing ample room for the stock to run towards a more appropriate valuation."
 
-  If Defensive Path: Select a strike that is at or near the current stock price, or just below a former support level that has now become resistance.
+  Example (Defensive Path - Overvalued Stock): "The $90 strike is recommended. My analysis concludes the stock is fundamentally overvalued, trading at twice the P/S ratio of its peers despite slowing growth. Technically, it is struggling below the $91 level, which is the 50-day moving average. The $90 strike is just below this key resistance, maximizing premium and creating an attractive exit for an overstretched name."
 
-  2. Check with Delta: Once the technically-sound strike is chosen, note its delta. This delta should ideally fall within a certain range as a guideline.
-
-  Standard Path Guideline: The ideal delta is 0.20 to 0.40.
-
-  Defensive Path Guideline: The ideal delta is 0.40 to 0.60.
-
-  Justification: This is the most critical step. Justify the strike by explaining both its technical significance and how its delta fits the strategic goal.
-
-  Example (Standard): "The $155 strike is recommended as it sits just above the key resistance at $154 where the stock failed twice last month. This strike has a delta of 0.28, which is well within the ideal range for generating income while allowing for modest upside."
-
-  Example (Defensive): "The $85 strike is recommended as the stock is currently trading at $85.50 and showing bearish weakness. This at-the-money strike maximizes premium income and has a delta of 0.52, aligning with the defensive goal of hedging downside or exiting the position."
-
-  Example (Exception): "The strongest resistance is at $210. The $210 strike is recommended; however, its delta is only 0.15. This means the premium will be smaller, but it offers a very high probability of success."
-
-  2. Trade Metrics (at current market prices):
-
-
-
+  2. Trade Metrics
   Option Premium: Current Bid/Ask spread and the Midpoint price.
 
   Total Premium Received: (Midpoint Price x 100 x Number of Contracts)
 
-  Breakeven Price: (Original Cost_Basis - Premium Received per Share).
+  Breakeven Price: (Original Cost_Basis - Premium Received per Share)
 
-  Return if Called Away (Annualized): Calculate the annualized ROI upon assignment. If the strike is below cost basis, clearly label the outcome as a "Mitigated Loss."
+  Return on Capital (RoC) (Annualized): (Premium per Share / Current Stock Price) * (365 / DTE)
 
-  3. Management Plan:
+  Return if Assigned: ((Strike Price + Premium per Share - Cost Basis) / Cost Basis) (Label as "Mitigated Loss" if negative).
 
+  Option Delta (Informational): Provide the delta of the chosen option.
 
-
+  3. Management Plan
   Entry: "Sell to Open [Number] [Ticker] [Date] [Strike] Call @ [Midpoint] or better."
 
-  Assignment (Primary Goal): Emphasize that assignment is the successful conclusion of the trade.
+  Goal: Assignment is an acceptable outcome.
 
-  Profit Taking / Rolling: Briefly state conditions for closing early or rolling the position.
+  Management: State conditions for early profit-taking or rolling.
+  Part 3: Executive Summary
+  After presenting all detailed analyses, provide a concluding section that consolidates all recommendations into two clear tables for a quick overview.
 
-  Part 3: Executive Summary for Telegram
+  Actionable Trades
 
-  After presenting all the detailed analyses, provide this concluding section that consolidates all summary tables for a quick overview.
+  | Strategy | Trade Recommendation | New Parameters | Concise Rationale |
+  | :--- | :--- | :--- | :--- |
+  | Covered Call on Ticker | [Action] | [New Strike/Exp] | [One-sentence summary] |
 
+  No Action Recommended
+
+  | Ticker | Reason | Concise Rationale |
+  | :--- | :--- | :--- |
+  | [Ticker] | [Reason] | [One-sentence summary] |
+  Part 4: Executive Summary for Telegram
+
+  Summarize in less than 4000 characters for telegram output
   //-- EXECUTIVE SUMMARY START --//
   Summarize the summary in text format here.
   //-- EXECUTIVE SUMMARY END --//

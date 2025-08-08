@@ -6,7 +6,7 @@ from typing import Any
 # --- Internal Project Imports ---
 from genai.constants import TaskType
 from genai.helpers.config import TelegramSettings
-
+from telegram.helpers import escape_markdown
 
 def send_report_to_telegram(
     company_name: str,
@@ -18,11 +18,22 @@ def send_report_to_telegram(
     gemini_url: str = "https://gemini.google.com/app",
     gemini_public_url: str | None = None,
     gemini_account_name: str | None = None,
+    retry_without_summary: bool = False,
 ) -> bool:
     """
     Sends a text message with a summary and a link to a Google Doc to one or more chats.
     """
     logging.info(f"Preparing to send text notification for {company_name} (Type: {task_type})")
+    logging.info(f"Sending telegram notification with the following details:\n"
+                 f"Company: {company_name}\n"
+                 f"Summary: {summary_text}\n"
+                 f"Doc URL: {doc_url}\n"
+                 f"Task Type: {task_type}\n"
+                 f"Target Chat ID: {target_chat_id}\n"
+                 f"Gemini URL: {gemini_url}\n"
+                 f"Gemini Public URL: {gemini_public_url}\n"
+                 f"Gemini Account Name: {gemini_account_name}\n"
+                 f"Retry Without Summary: {retry_without_summary}")
     if not config or not config.token:
         logging.error("Telegram token not configured. Cannot send notifications.")
         return False
@@ -40,35 +51,35 @@ def send_report_to_telegram(
 
     logging.info(f"Notification will be sent to chat IDs: {list(chat_ids_to_notify)}")
 
-    # --- Construct title based on task type ---
-    if task_type == TaskType.COMPANY_DEEP_DIVE:
-        title = f"✅ **New Deep-Dive Analysis: {company_name}**"
-    elif task_type == TaskType.SHORT_COMPANY_DEEP_DIVE:
-        title = f"📉 **New Short-Sell Analysis: {company_name}**"
-    elif task_type == TaskType.DAILY_MONITOR:
-        title = f"📈 **Daily Tactical Update: {company_name}**"
-    else:
-        title = f"ℹ️ **New Report: {company_name}**"
+    # 1. Escape all text variables first
+    escaped_company_name = escape_markdown(company_name, version=2)
+    escaped_task_type = escape_markdown(task_type, version=2)
+    escaped_admin_id = escape_markdown(config.admin_id, version=2)
+    escaped_summary = escape_markdown(summary_text, version=2) if summary_text and not retry_without_summary else ""
+    escaped_account_name = escape_markdown(gemini_account_name, version=2) if gemini_account_name else ""
 
-    # --- Construct the message text ---
-    message_text = (
-        f"{title}\n\n"
-        f"{summary_text}\n\n"
-        f"**Report:** [Google Doc]({doc_url})\n"
-        f"**Gemini Chat:** [Continue the conversation]({gemini_url})"
-    )
-    if gemini_account_name:
-        message_text += f"\n**Gemini Account:** {gemini_account_name}"
-    if gemini_public_url:
-        message_text += f"\n**Public Link:** [View Public Chat]({gemini_public_url})"
-
+    # 2. Build the message parts using f-strings for clarity
+    #    Note: Use '\\' to create a literal backslash for escaping the colon.
+    parts = [
+        f"Company\\: {escaped_company_name}",
+        f"Task Type\\: {escaped_task_type}",
+        "",
+        escaped_summary,
+        "",
+        f"Requested By\\: {escaped_admin_id}",
+        f"Report\\: [View Report]({doc_url})",
+        f"Gemini Chat\\: [Continue the conversation]({gemini_url})",
+        f"Gemini Account\\: {escaped_account_name}",
+    ]
+    message_text = "\n".join(part for part in parts if part)
+    # message_text = escape_markdown(message_text, version=2)
     # --- Loop and send to all unique recipients ---
     all_successful = True
     for chat_id in chat_ids_to_notify:
         payload = {
             "chat_id": chat_id,
             "text": message_text,
-            "parse_mode": "Markdown",
+            "parse_mode": "MarkdownV2",
             "disable_web_page_preview": True,
         }
         # Log the full payload at DEBUG level for detailed troubleshooting
@@ -82,6 +93,24 @@ def send_report_to_telegram(
             logging.error(
                 f"Failed to send Telegram message to chat_id {chat_id}.", exc_info=True
             )
+            if not retry_without_summary:
+                # Retry without summary text if the first attempt fails
+                logging.info("Retrying without summary text...")
+                success = send_report_to_telegram(
+                    company_name=company_name,
+                    summary_text="",
+                    doc_url=doc_url,
+                    config=config,
+                    task_type=task_type,    
+                    target_chat_id=target_chat_id,  
+                    gemini_url=gemini_url,
+                    gemini_public_url=gemini_public_url,
+                    gemini_account_name=gemini_account_name,
+                    retry_without_summary=True,
+                )
+                if success:
+                    logging.info(f"Successfully retried sending message to chat_id {chat_id} without summary.")
+                    continue
             all_successful = False
             continue
         except Exception:
@@ -108,8 +137,8 @@ if __name__ == "__main__":
     send_report_to_telegram(
         company_name="Example Company",
         summary_text=caption,
-        doc_url="www.google.com",
+        doc_url="https://docs.google.com/document/d/1_xGK_7arolWHVUb1sb8s_0YVW3vewfe_CGeXgZlzK90/edit?tab=t.0",
         config=config.telegram,
         task_type=TaskType.COMPANY_DEEP_DIVE,
-        target_chat_id="123456789",
+        # target_chat_id="123456789",
     )
