@@ -575,17 +575,12 @@ buy_the_dip: |
 
 
 covered_call_strategy_review: |
-  Act as an expert-level options trading strategist and fundamental analyst. Your primary objective is to analyze my entire portfolio from the provided IBKRdata.csv to create a complete covered call action plan. This involves:
+  Act as an expert-level options trading strategist and fundamental analyst. Your primary objective is to create a complete covered call action plan by analyzing my entire portfolio from the provided IBKRdata.csv.
 
-  Recommending management actions (Roll or Hold) for existing covered call positions.
-  You will systematically analyze EVERY US and HK listed stock, determine its fair value, and then integrate that finding with technical analysis to propose a trade. 
-  Assume you have access to all necessary raw financial data (SEC filings, market data, etc.) to perform this analysis.
+  Methodology: You will systematically analyze every US and HK listed stock. Your recommendations must be the product of your own independent analysis, where you first determine a stock's fair value and then integrate that finding with technical analysis to propose a trade. This process will identify management actions for existing positions and find new opportunities on uncovered stock. Crucially, you must generate a full, unabridged report for every single holding. Do not use summary statements or omit the detailed analysis for any ticker.
 
-  Identifying new covered call opportunities on uncovered stock positions.
-
-  Your recommendations must be the product of your own independent analysis. Assume you have access to all necessary raw financial data.
-  Execution Date: For all calculations, the current date is [CURRENT_DATE].
-  Data Assumption: The IBKRdata.csv file contains details for both long stock positions (Ticker, Quantity, Cost_Basis) and any existing short call positions (Short_Strike, Short_Expiration, Premium_Received).
+  Execution Date: For all calculations, assume the current date is [CURRENT_DATE].
+  Data Assumptions: Assume the IBKRdata.csv file contains all necessary details for long stock and short call positions. Assume you have access to all necessary raw financial data (SEC filings, market data, etc.) to perform your analysis.
 
   Part A: Management of Existing Covered Calls
   For every stock position that is already covered by a short call, perform the following analysis to determine if the position should be rolled or held.
@@ -677,28 +672,31 @@ covered_call_strategy_review: |
 
   Entry: "Sell to Open [Number] [Ticker] [Date] [Strike] Call @ [Midpoint] or better."
 
-  Goal: Emphasize that assignment is an acceptable and often successful outcome.
+  Goal: Assignment is an acceptable outcome.
 
-  Management: Briefly state the conditions for active management, based on a re-evaluation of the trade, not a fixed profit target.
+  Management: State dynamic conditions for active management (e.g., "Consider early exit if the stock's trend breaks down or a large portion of premium is captured early, offering a superior annualized return.").
 
-  Example: "We will actively monitor this position. Consider an early exit or roll if the stock's technical trend breaks down, or if we capture a large portion of the extrinsic value very early in the expiration cycle, presenting a superior annualized return on a new position."
-  Part 3: Executive Summary
-  After presenting all detailed analyses, provide a concluding section that consolidates all recommendations into two clear tables for a quick overview.
+  Part C: Executive Summary
+  Consolidate all recommendations into a final, scannable dashboard.
 
-  Actionable Trades
+  Management Actions on Existing Positions
+  Ticker	DTE	P/L on Short Call	Verdict	Rationale
 
-  | Strategy | Trade Recommendation | New Parameters | Concise Rationale |
-  | :--- | :--- | :--- | :--- |
-  | Covered Call on Ticker | [Action] | [New Strike/Exp] | [One-sentence summary] |
+  New & Rolled Trade Recommendations
+  Ticker	Type	Path	Expiration	Strike	RoC (Ann.)	Return if Assigned
+  New	Standard				
+  Roll	Defensive					
 
   No Action Recommended
+  Ticker	Reason	Concise Rationale
+  [Ticker]	[Reason]	[One-sentence summary]
 
-  | Ticker | Reason | Concise Rationale |
-  | :--- | :--- | :--- |
-  | [Ticker] | [Reason] | [One-sentence summary] |
   Part 4: Executive Summary for Telegram
 
-  Summarize in less than 4000 characters for telegram output
+  Finally, provide a condensed plain-text summary of all actionable trades, under 4000 characters
   //-- EXECUTIVE SUMMARY START --//
   Summarize the summary in text format here.
   //-- EXECUTIVE SUMMARY END --//
+
+  Final Instruction Check
+  Before generating the response, verify that a complete, multi-part analysis (Part A or Part B) has been written for every single stock position provided in the input data. The final output must be the full, unabridged report without any summary placeholders or notes about what "would follow." Execute the full task for all tickers.
