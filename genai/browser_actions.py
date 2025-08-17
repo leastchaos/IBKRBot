@@ -82,7 +82,7 @@ class Browser:
         # Return an instance of the class itself
         return cls(driver)
 
-    def _click_element(self, by: By, value: str, timeout: int | None = None) -> None:
+    def _click_element(self, by: str, value: str, timeout: int | None = None) -> None:
         """Robustly clicks an element, waiting for it and handling stale references."""
         wait = self.wait if timeout is None else WebDriverWait(self.driver, timeout)
         try:

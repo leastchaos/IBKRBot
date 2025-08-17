@@ -54,7 +54,7 @@ def retry_on_exception(func):
                     )
                     if retry_choice in ["y", "n"]:
                         break
-                    print("Invalid input. Please enter 'y' or 'n'.")
+                    logging.error("Invalid input. Please enter 'y' or 'n'.")
 
                 if retry_choice == "y":
                     logging.info(f"User chose to retry '{func.__name__}'...")
@@ -88,9 +88,11 @@ def save_debug_screenshot(driver: "WebDriver", filename_prefix: str):
         logging.error(f"Failed to save debug screenshot: {e}", exc_info=True)
 
 
-def get_prompt(task_type: str, date_format: str = "%Y-%m-%d") -> str | None:
+def get_prompt(task_type: str, date_format: str | None = None) -> str | None:
     prompts = load_prompts()
+    logging.debug(f"Loaded prompts: {prompts.keys()}")  # Debugging line to check loaded prompts
     prompt_template = prompts.get(task_type)
+    logging.debug(f"Prompt template for '{task_type}': {prompt_template}")  # Debugging line
     if prompt_template:
         if date_format:
             prompt_template = prompt_template.replace(

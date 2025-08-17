@@ -81,18 +81,18 @@ def _dispatch_new_task(state: WorkerState):
     browser.navigate_to_url(GEMINI_URL)
     
     prompt = get_prompt(task_type.value)
-    if not prompt or task_type not in [TaskType.COMPANY_DEEP_DIVE, TaskType.SHORT_COMPANY_DEEP_DIVE, TaskType.BUY_THE_DIP]:
+    if not prompt:
         logging.error(f"Prompt for task type '{task_type.value}' not found.")
         db.handle_task_failure(task_id, "Prompt not found")
         return
 
     success = False
     
-    if task_type in [TaskType.COMPANY_DEEP_DIVE, TaskType.SHORT_COMPANY_DEEP_DIVE, TaskType.BUY_THE_DIP]:
+    if task_type in [TaskType.COMPANY_DEEP_DIVE, TaskType.SHORT_COMPANY_DEEP_DIVE, TaskType.BUY_THE_DIP, TaskType.DAILY_MONITOR]:
         success = workflows.perform_deep_research(browser, f"{prompt} {company_name}")
     elif task_type == TaskType.UNDERVALUED_SCREENER:
          success = workflows.perform_deep_research(browser, prompt)
-    elif task_type == TaskType.PORTFOLIO_REVIEW:
+    elif task_type in [TaskType.PORTFOLIO_REVIEW, TaskType.COVERED_CALL_REVIEW]:
         success = workflows.perform_portfolio_review(browser, prompt, state.config.drive.portfolio_sheet_url)
     else:
         logging.warning(f"No workflow defined for task type: {task_type.value}")
