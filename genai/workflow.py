@@ -94,7 +94,7 @@ def initialize_driver(
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
+    chrome_options.add_experimental_option("useAutomationExtension", False)
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
@@ -206,30 +206,39 @@ def _click_start_research_button(driver: WebDriver):
         driver.find_element(By.XPATH, START_RESEARCH_BUTTON_XPATH).click()
     logging.info("Start Research button clicked.")
 
+
 def _click_tools_button(driver: WebDriver):
     """Waits for and clicks the 'Tools' button to initiate research."""
     try:
         # Define the locator for the button
-        
+
         # Wait up to 10 seconds for the button to be clickable
         wait = WebDriverWait(driver, 10)
         tools_button = wait.until(
             EC.element_to_be_clickable((By.XPATH, TOOLS_BUTTON_XPATH))
         )
-        
+
         # Click the button
         tools_button.click()
         logging.info("Clicked the 'Tools' button.")
-        
+
     except TimeoutException:
-        logging.error("The 'Tools' button was not found or clickable within the time limit.")
-        raise # Re-raise the exception to be caught by the calling function
+        logging.error(
+            "The 'Tools' button was not found or clickable within the time limit."
+        )
+        raise  # Re-raise the exception to be caught by the calling function
+
+
+def _navigate_to_deep_research_prompt(driver: WebDriver):
+    """Orchestrates the clicks to get to the deep research interface."""
+    _click_tools_button(driver)
+    _click_deep_research_button(driver)
+
 
 def perform_deep_research(driver: WebDriver, prompt: str) -> bool:
     """Handles the full workflow for initiating a Deep Research task."""
     try:
-        _click_tools_button(driver)
-        _click_deep_research_button(driver)
+        _navigate_to_deep_research_prompt(driver)
         enter_prompt_and_submit(driver, prompt)
         _click_start_research_button(driver)
         logging.info("Deep Research initiated.")
@@ -306,7 +315,7 @@ def perform_daily_monitor_research(
     """
     try:
         logging.info(f"Starting daily monitor workflow. Attaching doc: {report_url}")
-        _click_deep_research_button(driver)
+        _navigate_to_deep_research_prompt(driver)
         _attach_drive_file(driver, report_url)
         enter_prompt_and_submit(driver, prompt)
         logging.info("Daily monitor prompt submitted for analysis.")
@@ -328,7 +337,7 @@ def perform_portfolio_review(driver: WebDriver, prompt: str, sheet_url: str) -> 
     try:
         logging.info("Starting portfolio review workflow.")
         _attach_drive_file(driver, sheet_url)
-        _click_deep_research_button(driver)
+        _navigate_to_deep_research_prompt(driver)
         enter_prompt_and_submit(driver, prompt)
         _click_start_research_button(driver)
         logging.info("Portfolio review prompt submitted for analysis.")
@@ -511,7 +520,7 @@ def _send_final_notification(
         doc_url=doc_url,
         config=config.telegram,
         task_type=task_type,
-        target_chat_id=None, # Use None to default to config.chat_id
+        target_chat_id=None,  # Use None to default to config.chat_id
         gemini_url=gemini_chat_url,
         gemini_public_url=gemini_public_url,
         gemini_account_name=account_name,
@@ -539,6 +548,8 @@ def _queue_follow_up_task(company_name: str, original_task_id: int):
             f"Database error while queuing follow-up task for {company_name}.",
             exc_info=True,
         )
+
+
 def share_chat_and_get_public_url(driver: WebDriver) -> str | None:
     """
     Shares the current Gemini conversation and returns the public URL.
@@ -582,9 +593,7 @@ def share_chat_and_get_public_url(driver: WebDriver) -> str | None:
         return public_url
 
     except Exception:
-        logging.error(
-            "An error occurred while sharing the chat.", exc_info=True
-        )
+        logging.error("An error occurred while sharing the chat.", exc_info=True)
         save_debug_screenshot(driver, "share_chat_error")
         # Fallback: try to press Escape to close any open dialogs
         try:
@@ -593,6 +602,7 @@ def share_chat_and_get_public_url(driver: WebDriver) -> str | None:
         except Exception as e:
             logging.warning(f"Could not send ESCAPE key as a fallback: {e}")
         return None
+
 
 def process_completed_job(
     driver: WebDriver, job: ResearchJob, config: Settings
@@ -630,17 +640,23 @@ def process_completed_job(
             logging.info(f"Google Doc ID: {doc_id}")
             full_report_text = get_google_doc_content(service, doc_id)
         if not full_report_text:
-            raise ValueError(f"Failed to fetch content from the Google Doc (ID: {doc_id}).")
+            raise ValueError(
+                f"Failed to fetch content from the Google Doc (ID: {doc_id})."
+            )
 
         # 3. Now, parse the fetched content for the executive summary.
         summary_marker = "//-- EXECUTIVE SUMMARY START --//"
-        
+
         summary_parts = full_report_text.split(summary_marker)
         if len(summary_parts) > 1:
             summary_text = summary_parts[1].strip()
-            logging.info(f"Successfully extracted executive summary for {company_name}.")   
+            logging.info(
+                f"Successfully extracted executive summary for {company_name}."
+            )
         else:
-            logging.warning(f"Could not find executive summary marker for {company_name}. Using a default message.")
+            logging.warning(
+                f"Could not find executive summary marker for {company_name}. Using a default message."
+            )
             summary_text = "Executive summary could not be automatically extracted from the report."
         summary_end = "//-- EXECUTIVE SUMMARY END --//"
         if summary_end in summary_text:
@@ -690,7 +706,9 @@ def process_completed_job(
                 logging.error(
                     f"Expected a string response for buy-range check, got: {type(check_response)}"
                 )
-                final_results["error_message"] = "Buy-range check did not return a valid response."
+                final_results["error_message"] = (
+                    "Buy-range check did not return a valid response."
+                )
                 return "error", final_results
             if check_response and "YES" in check_response.upper():
                 logging.info(
