@@ -35,7 +35,7 @@ from selenium.webdriver.chrome.options import Options
 class Browser:
     """Encapsulates all Selenium browser interactions for the GenAI workflows."""
 
-    def __init__(self, driver: WebDriver, default_timeout: int = 20):
+    def __init__(self, driver: WebDriver, default_timeout: int = 120):
         """
         Initializes the Browser wrapper with an existing WebDriver instance.
         This __init__ is now primarily for internal use by the class method.

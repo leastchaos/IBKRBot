@@ -225,7 +225,7 @@ def trigger_daily_monitor_task() -> list[str]:
         for company in companies:
             logging.info(f"Queuing daily monitor task for {company[0]}")
             task_id = queue_task(
-                task_type=TaskType.TACTICAL_REVIEW,  # Assuming TACTICAL_REVIEW is the correct type for daily monitoring
+                task_type=TaskType.COMPANY_DEEP_DIVE, 
                 requested_by="daily_monitor_trigger",
                 company_name=company[0]
             )

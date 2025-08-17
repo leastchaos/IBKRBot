@@ -99,7 +99,7 @@ def run_post_processing_for_standard_job(browser: Browser, job: ResearchJob, con
         doc_url=doc_url,
         config=config.telegram,
         task_type=task_type,
-        target_chat_id=job.requested_by, # Simplified for now
+        target_chat_id=None,  # job.requested_by, # Simplified for now
         gemini_url=browser.driver.current_url,
         gemini_account_name=account_name
     )
