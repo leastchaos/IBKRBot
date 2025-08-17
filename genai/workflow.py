@@ -49,6 +49,7 @@ from genai.constants import (
     ADD_FROM_DRIVE_BUTTON_XPATH,
     DRIVE_URL_INPUT_CSS,
     TELEGRAM_USER_PREFIX,
+    TOOLS_BUTTON_XPATH,
     TaskType,
 )
 
@@ -205,10 +206,29 @@ def _click_start_research_button(driver: WebDriver):
         driver.find_element(By.XPATH, START_RESEARCH_BUTTON_XPATH).click()
     logging.info("Start Research button clicked.")
 
+def _click_tools_button(driver: WebDriver):
+    """Waits for and clicks the 'Tools' button to initiate research."""
+    try:
+        # Define the locator for the button
+        
+        # Wait up to 10 seconds for the button to be clickable
+        wait = WebDriverWait(driver, 10)
+        tools_button = wait.until(
+            EC.element_to_be_clickable((By.XPATH, TOOLS_BUTTON_XPATH))
+        )
+        
+        # Click the button
+        tools_button.click()
+        logging.info("Clicked the 'Tools' button.")
+        
+    except TimeoutException:
+        logging.error("The 'Tools' button was not found or clickable within the time limit.")
+        raise # Re-raise the exception to be caught by the calling function
 
 def perform_deep_research(driver: WebDriver, prompt: str) -> bool:
     """Handles the full workflow for initiating a Deep Research task."""
     try:
+        _click_tools_button(driver)
         _click_deep_research_button(driver)
         enter_prompt_and_submit(driver, prompt)
         _click_start_research_button(driver)

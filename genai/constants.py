@@ -27,7 +27,7 @@ SHARE_EXPORT_BUTTON_XPATH = "//button[contains(., 'Export')]"
 EXPORT_TO_DOCS_BUTTON_XPATH = "//button[contains(., 'Export to Docs')]"
 RESPONSE_CONTENT_CSS = "div.response-content"
 GENERATING_INDICATOR_CSS = "progress.mat-mdc-linear-progress"
-
+TOOLS_BUTTON_XPATH = "//span[normalize-space()='Tools']"
 # --- Error Recovery ---
 RECOVERABLE_ERROR_PHRASE = (
     "I encountered an error doing what you asked. Could you try again?"
