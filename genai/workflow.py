@@ -197,7 +197,7 @@ def _click_start_research_button(driver: WebDriver):
     """Waits for and clicks the 'Start Research' button, handling stale elements."""
     logging.info("Locating and clicking Start Research button...")
     try:
-        WebDriverWait(driver, 120).until(
+        WebDriverWait(driver, 300).until(
             EC.element_to_be_clickable((By.XPATH, START_RESEARCH_BUTTON_XPATH))
         ).click()
     except StaleElementReferenceException:
@@ -307,8 +307,8 @@ def perform_daily_monitor_research(
 def perform_portfolio_review(driver: WebDriver, prompt: str, sheet_url: str) -> bool:
     try:
         logging.info("Starting portfolio review workflow.")
-        _click_deep_research_button(driver)
         _attach_drive_file(driver, sheet_url)
+        _click_deep_research_button(driver)
         enter_prompt_and_submit(driver, prompt)
         _click_start_research_button(driver)
         logging.info("Portfolio review prompt submitted for analysis.")

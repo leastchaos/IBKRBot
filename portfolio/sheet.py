@@ -26,7 +26,12 @@ def get_sheet_data(
     logger.info(f"Getting data from {workbook} {sheet_name}")
     worksheet = get_worksheet(workbook, sheet_name)
     dataframe = gd.get_as_dataframe(worksheet, evaluate_formulas=evaluate_formulas)
+    logger.info(f"Data retrieved from {workbook} {sheet_name}")
+    # if not isinstance(dataframe, pd.DataFrame):
+    #     logger.error(f"Failed to retrieve data from {workbook} {sheet_name}")
+    #     return pd.DataFrame()
     # remove empty rows
+    print(dataframe.head())
     dataframe = dataframe.dropna(how="all")
     # remove empty cols
     dataframe = dataframe.dropna(axis=1, how="all")

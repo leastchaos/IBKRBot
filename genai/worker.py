@@ -139,7 +139,7 @@ def launch_research_task(
                         f"Falling back to a full deep dive analysis."
                     )
 
-                deep_dive_prompt_template = prompts.get(task_type)
+                deep_dive_prompt_template = get_prompt(task_type)
                 if not deep_dive_prompt_template:
                     raise ValueError(
                         f"No prompt template for fallback task type '{TaskType.COMPANY_DEEP_DIVE}'"
@@ -550,4 +550,4 @@ def _ensure_drivers_are_running(
 
 
 if __name__ == "__main__":
-    main(headless=True)
+    main(headless=False)

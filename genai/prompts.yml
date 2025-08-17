@@ -693,9 +693,9 @@ covered_call_strategy_review: |
 
   Part 4: Executive Summary for Telegram
 
-  Finally, provide a condensed plain-text summary of all actionable trades, under 4000 characters
+  Finally, provide a condensed plain-text summary of all actionable trades, under 4000 characters exactly in the following format:
   //-- EXECUTIVE SUMMARY START --//
-  Summarize the summary in text format here.
+  [Summarize the summary in text format here.]
   //-- EXECUTIVE SUMMARY END --//
 
   Final Instruction Check
