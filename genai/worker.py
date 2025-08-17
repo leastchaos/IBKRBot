@@ -108,6 +108,8 @@ def _dispatch_new_task(state: WorkerState):
     success = False
     if task_type in [TaskType.PORTFOLIO_REVIEW, TaskType.COVERED_CALL_REVIEW]:
         success = workflow_func(browser, prompt, state.config.drive.portfolio_sheet_url)
+    elif task_type == TaskType.TACTICAL_REVIEW:
+        success = workflow_func(browser, prompt, company_name)
     else:
         # For tasks that may or may not have a company name
         full_prompt = f"{prompt} {company_name}" if company_name else prompt

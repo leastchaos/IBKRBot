@@ -237,7 +237,20 @@ def trigger_daily_monitor_task() -> list[str]:
     except sqlite3.Error as e:
         logging.error(f"Database error triggering daily monitor task: {e}")
     return companies_monitored
-    
+
+
+def delete_all_unstarted_tasks() -> None:
+    """Deletes all tasks that are still in the 'queued' state."""
+    with _connect() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM tasks WHERE status = 'queued'")
+            conn.commit()
+            logging.info("All unstarted tasks have been deleted.")
+        except sqlite3.Error as e:
+            logging.error(f"Database error deleting unstarted tasks: {e}", exc_info=True)
+
+
 if __name__ == "__main__":
     # This is just for testing the database setup
     logging.basicConfig(level=logging.INFO)
