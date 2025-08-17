@@ -1,13 +1,15 @@
+# common/logging_setup.py
 import logging
-from datetime import datetime
 import os
+from datetime import datetime
 
-
-def setup_logging():
-    log_dir = os.path.join(os.getcwd(), "logs")
+def setup_logging(log_dir: str = "logs"):
+    """
+    Sets up a centralized logger for the application.
+    """
     os.makedirs(log_dir, exist_ok=True)
     log_filename = os.path.join(
-        log_dir, f"automation_log_{datetime.now().strftime('%Y%m%d')}.log"
+        log_dir, f"app_log_{datetime.now().strftime('%Y%m%d')}.log"
     )
 
     log_format = logging.Formatter(
@@ -30,7 +32,8 @@ def setup_logging():
     file_handler.setFormatter(log_format)
     logger.addHandler(file_handler)
 
-    # Quieten noisy third-party loggers that spam INFO level.
+    # Quieten noisy third-party loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)
-
+    logging.getLogger("telegram").setLevel(logging.WARNING)
+    
     logging.info(f"Logging configured. Console: INFO, File: DEBUG -> '{log_filename}'")

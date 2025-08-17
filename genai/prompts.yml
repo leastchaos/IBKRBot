@@ -64,7 +64,7 @@ undervalued_screener: |
   [Company 2 Name & Ticker (if applicable)]: Initiate Long Position within the range of [Buy Range].
   //-- EXECUTIVE SUMMARY END --//
 
-EXTRACT_TICKERS_PROMPT: |
+extract_tickers: |
   """Analyze the preceding report and extract the main stock tickers being analyzed and its corresponding primary stock exchange.
   Your response must contain ONLY a comma-separated list of exchange-ticker pairs using the format EXCHANGE:TICKER.
   If the exchange is not explicitly mentioned for a ticker, use the ticker's main listing exchange. 
@@ -122,26 +122,20 @@ company_deep_dive: |
   Structure your response for this section *exactly* as follows, filling in the data from your analysis:
 
   //-- EXECUTIVE SUMMARY START --//
-  Reiterate your investment thesis (Buy/Sell/Hold).
-  Provide a specific price target.
-  Define a clear price range for entering a long position or exiting an existing position.
+  **Ticker:** [TICKER]
+  **Stance:** [Your final, core recommendation]
+  **Key Price Levels:**
+  - Action Range: [Your defined entry/action range]
+  - Target / Exit: [Your defined price target or exit level]
+  **Thesis Summary:**
+  [A concise, well-written summary of the core thesis and rationale.]
   //-- EXECUTIVE SUMMARY END --//
 
   Your analysis should be based solely on publicly available information up to the present date.
 
   The stock ticker to be analyzed is:
 
-FOLLOWUP_DEEPDIVE_PROMPT: |
-  From the detailed report above, extract the key information and format your response *exactly* as follows. Do not add any other text, headers, or explanations. Fill in the data based on the report.
-  **Current Price:** [The current price from the report]
-  **Investment Direction:** [The investment direction from the report (e.g., Buy, Hold, Sell)]
-  **Entry Range:** [The entry price range from the report]
-  **Exit Range:** [The exit price range or target from the report]
-  **Thesis:**
-  [A concise, summary of the investment thesis from the report, suitable for a message not exceeding 4000 characters.]
-  """
-
-daily_monitor: |
+tactical_review: |
   """You are a tactical execution analyst. A Google Doc containing a full, pre-approved investment thesis for a stock has been attached to this session. Your task is to use that document as context to determine if today is an opportune moment to initiate a position/adjust a position held.
 
   //-- ANALYSIS PROTOCOL --//
@@ -198,11 +192,13 @@ daily_monitor: |
   //-- EXECUTIVE SUMMARY END --//
 
 
-PROMPT_BUY_RANGE_CHECK: |
+buy_range_check: |
   "Based on the full report above, is the current stock price inside the 'BUY' range you identified? Please answer with only 'YES' or 'NO'."
 
 portfolio_review: |
   You are to act as a world-class portfolio analyst and strategist, providing institutional-grade analysis. Your response must go beyond surface-level recommendations and provide a comprehensive deep dive into each position. Your analysis must be based on the latest publicly available information.
+
+  The execution date can be assumed to be on [CURRENT_DATE].
 
   The attached file contains my current stock and options positions.
 

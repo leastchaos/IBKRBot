@@ -5,12 +5,26 @@ import re
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from genai.constants import TaskType
-from genai.helpers.config import load_prompts
+import yaml
+from yaml import SafeLoader
 
 # To prevent circular imports with type hints
 if TYPE_CHECKING:
     from selenium.webdriver.remote.webdriver import WebDriver
+
+
+def load_prompts() -> dict[str, str]:
+    """Loads and returns the prompts from the prompts.yml file."""
+    prompts_path = os.path.join(os.getcwd(), "genai", "prompts.yml")
+    try:
+        with open(prompts_path, "r", encoding="utf-8") as f:
+            return yaml.load(f, Loader=SafeLoader)
+    except FileNotFoundError:
+        logging.error(f"FATAL: Prompts file not found at {prompts_path}.")
+        return {}
+    except yaml.YAMLError as e:
+        logging.error(f"FATAL: Error parsing prompts.yml file: {e}")
+        return {}
 
 
 def retry_on_exception(func):
@@ -40,7 +54,7 @@ def retry_on_exception(func):
                     )
                     if retry_choice in ["y", "n"]:
                         break
-                    print("Invalid input. Please enter 'y' or 'n'.")
+                    logging.error("Invalid input. Please enter 'y' or 'n'.")
 
                 if retry_choice == "y":
                     logging.info(f"User chose to retry '{func.__name__}'...")
@@ -76,9 +90,14 @@ def save_debug_screenshot(driver: "WebDriver", filename_prefix: str):
 
 def get_prompt(task_type: str, date_format: str = "%Y-%m-%d") -> str | None:
     prompts = load_prompts()
+    logging.debug(f"Loaded prompts: {prompts.keys()}")  # Debugging line to check loaded prompts
     prompt_template = prompts.get(task_type)
-    if prompt_template:
-        if date_format:
-            prompt_template = prompt_template.replace("[CURRENT_DATE]", datetime.now().strftime(date_format))
-        return prompt_template
-    return None
+    logging.debug(f"Prompt template for '{task_type}': {prompt_template}")  # Debugging line
+    if not prompt_template:
+        logging.error(f"Prompt for task type '{task_type}' not found.")
+        return None
+    if date_format:
+        prompt_template = prompt_template.replace(
+            "[CURRENT_DATE]", datetime.now().strftime(date_format)
+        )
+    return prompt_template

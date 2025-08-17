@@ -14,13 +14,15 @@ import logging
 import gspread
 import pandas as pd
 import telegram
-
+import json
 # Import your custom utility functions
 from portfolio import sheet
 
 # --- Configuration ---
-TELEGRAM_BOT_TOKEN: str = '8250069875:AAFHMc4JNLTVBolVauVUoceGg3q5gDjoYhQ'
-TELEGRAM_CHAT_ID: str = '-1002769245528'
+TELEGRAM_BOT_TOKEN: str = json.loads(open('credentials/portfolio_telegram.json').read())['bot_token']
+TELEGRAM_CHAT_ID: str = json.loads(open('credentials/portfolio_telegram.json').read())['chat_id']
+# Google Sheet configuration
+# Ensure these names match your actual Google Sheet and sheet names
 GOOGLE_SHEET_DOCUMENT_NAME: str = 'IBKR Data'
 BALANCE_SHEET_NAME: str = 'IBKRBalance'
 POSITIONS_SHEET_NAME: str = 'IBKRPositions'

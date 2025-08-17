@@ -28,13 +28,7 @@ EXPORT_TO_DOCS_BUTTON_XPATH = "//button[contains(., 'Export to Docs')]"
 RESPONSE_CONTENT_CSS = "div.response-content"
 GENERATING_INDICATOR_CSS = "progress.mat-mdc-linear-progress"
 TOOLS_BUTTON_XPATH = "//span[normalize-space()='Tools']"
-# --- Error Recovery ---
-RECOVERABLE_ERROR_PHRASE = (
-    "I encountered an error doing what you asked. Could you try again?"
-)
-SOMETHING_WENT_WRONG_RESPONSE = (
-    "Sorry, something went wrong. Please try your request again."
-)
+
 
 # --- NEW: Selectors for attaching Google Drive files ---
 # NOTE: These are placeholder selectors. You will need to inspect the Gemini
@@ -54,9 +48,11 @@ class TaskType(str, Enum):
     """Defines the valid types of tasks the worker can process."""
 
     COMPANY_DEEP_DIVE = "company_deep_dive"
-    DAILY_MONITOR = "daily_monitor"
+    TACTICAL_REVIEW = "tactical_review"
     UNDERVALUED_SCREENER = "undervalued_screener"
     PORTFOLIO_REVIEW = "portfolio_review"
     SHORT_COMPANY_DEEP_DIVE = "short_company_deep_dive"
     BUY_THE_DIP = "buy_the_dip"
     COVERED_CALL_REVIEW = "covered_call_strategy_review"
+    BUY_RANGE_CHECK = "buy_range_check"
+    EXTRACT_TICKERS = "extract_tickers"
