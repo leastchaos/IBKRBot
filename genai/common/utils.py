@@ -88,15 +88,16 @@ def save_debug_screenshot(driver: "WebDriver", filename_prefix: str):
         logging.error(f"Failed to save debug screenshot: {e}", exc_info=True)
 
 
-def get_prompt(task_type: str, date_format: str | None = None) -> str | None:
+def get_prompt(task_type: str, date_format: str = "%Y-%m-%d") -> str | None:
     prompts = load_prompts()
     logging.debug(f"Loaded prompts: {prompts.keys()}")  # Debugging line to check loaded prompts
     prompt_template = prompts.get(task_type)
     logging.debug(f"Prompt template for '{task_type}': {prompt_template}")  # Debugging line
-    if prompt_template:
-        if date_format:
-            prompt_template = prompt_template.replace(
-                "[CURRENT_DATE]", datetime.now().strftime(date_format)
-            )
-        return prompt_template
-    return None
+    if not prompt_template:
+        logging.error(f"Prompt for task type '{task_type}' not found.")
+        return None
+    if date_format:
+        prompt_template = prompt_template.replace(
+            "[CURRENT_DATE]", datetime.now().strftime(date_format)
+        )
+    return prompt_template

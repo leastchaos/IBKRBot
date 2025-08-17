@@ -194,6 +194,8 @@ buy_range_check: |
 portfolio_review: |
   You are to act as a world-class portfolio analyst and strategist, providing institutional-grade analysis. Your response must go beyond surface-level recommendations and provide a comprehensive deep dive into each position. Your analysis must be based on the latest publicly available information.
 
+  The execution date can be assumed to be on [CURRENT_DATE].
+
   The attached file contains my current stock and options positions.
 
   Your primary task is to conduct a multi-layered analysis by first parsing and grouping the entire portfolio into four distinct categories in the following order of precedence:
