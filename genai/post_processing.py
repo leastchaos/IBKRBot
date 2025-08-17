@@ -5,7 +5,7 @@ from typing import TypedDict, Any
 
 from genai.browser_actions import Browser
 from genai.database.api import queue_task, add_tasks_from_screener
-from genai.helpers.config import Settings, DriveSettings
+from genai.common.config import Settings, DriveSettings
 from genai.helpers.google_api_helpers import (
     get_doc_id_from_url,
     get_google_doc_content,
@@ -14,27 +14,10 @@ from genai.helpers.google_api_helpers import (
     move_file_to_folder,
     share_google_doc_publicly,
 )
-from genai.helpers.helpers import get_prompt
+from genai.common.utils import get_prompt
 from genai.helpers.notifications import send_report_to_telegram
 from genai.constants import TaskType
-
-# Define the types for clarity, mirroring your original file
-class ResearchJob(TypedDict):
-    task_id: int
-    handle: str
-    company_name: str
-    status: str
-    started_at: float
-    requested_by: str | None
-    error_recovery_attempted: bool
-    task_type: str
-    account_name: str
-
-class ProcessingResult(TypedDict, total=False):
-    report_url: str
-    summary: str
-    error_message: str
-
+from genai.models import ResearchJob, ProcessingResult
 
 def _extract_summary(report_text: str) -> str:
     """Parses the full report text to extract the executive summary."""
@@ -84,10 +67,10 @@ def _perform_buy_range_check(browser: Browser, prompt: str) -> bool:
 
 def run_post_processing_for_standard_job(browser: Browser, job: ResearchJob, config: Settings) -> tuple[str, ProcessingResult]:
     """Orchestrates all post-processing for a standard research job."""
-    task_type = job["task_type"]
-    company_name = job["company_name"]
-    account_name = job["account_name"]
-    
+    task_type = job.task_type
+    company_name = job.company_name
+    account_name = job.account_name
+
     drive_service = get_drive_service(account_name)
     if not drive_service:
         return "error", {"error_message": "Failed to authenticate with Google Drive."}
@@ -116,7 +99,7 @@ def run_post_processing_for_standard_job(browser: Browser, job: ResearchJob, con
         doc_url=doc_url,
         config=config.telegram,
         task_type=task_type,
-        target_chat_id=job.get("requested_by"), # Simplified for now
+        target_chat_id=job.requested_by, # Simplified for now
         gemini_url=browser.driver.current_url,
         gemini_account_name=account_name
     )
@@ -133,16 +116,16 @@ def run_post_processing_for_standard_job(browser: Browser, job: ResearchJob, con
             queue_task(
                 task_type=TaskType.DAILY_MONITOR,
                 company_name=company_name,
-                requested_by=f"follow_up_from_task_{job['task_id']}"
+                requested_by=f"follow_up_from_task_{job.task_id}"
             )
     return "completed", final_results
 
 
 def run_post_processing_for_screener(browser: Browser, job: ResearchJob) -> tuple[str, ProcessingResult]:
     """Processes a completed screener job by extracting tickers and queuing new tasks."""
-    logging.info(f"Screener task {job['task_id']} complete. Extracting tickers...")
+    logging.info(f"Screener task {job.task_id} complete. Extracting tickers...")
     try:
-        extract_tickers_prompt = get_prompt("EXTRACT_TICKERS_PROMPT")
+        extract_tickers_prompt = get_prompt(TaskType.EXTRACT_TICKERS)
         if not extract_tickers_prompt:
              raise ValueError("Could not load EXTRACT_TICKERS_PROMPT.")
 
@@ -155,9 +138,9 @@ def run_post_processing_for_screener(browser: Browser, job: ResearchJob) -> tupl
         company_list = [item.strip() for item in company_list_raw.split(',') if item.strip()]
 
         logging.info(f"Screener discovered {len(company_list)} companies. Queuing for deep dive...")
-        add_tasks_from_screener(company_list, job["task_id"])
-        
+        add_tasks_from_screener(company_list, job.task_id)
+
         return "completed", {}
     except Exception as e:
-        logging.error(f"Error post-processing screener task {job['task_id']}: {e}", exc_info=True)
+        logging.error(f"Error post-processing screener task {job.task_id}: {e}", exc_info=True)
         return "error", {"error_message": "Failed to extract or queue companies from screener."}

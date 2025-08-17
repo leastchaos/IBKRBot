@@ -5,7 +5,7 @@ from typing import Any
 
 # --- Internal Project Imports ---
 from genai.constants import TaskType
-from genai.helpers.config import TelegramSettings
+from genai.common.config import TelegramSettings
 from telegram.helpers import escape_markdown
 
 def send_report_to_telegram(
@@ -128,7 +128,7 @@ def send_report_to_telegram(
 
 
 if __name__ == "__main__":
-    from genai.helpers.config import get_settings
+    from genai.common.config import get_settings
     from genai.constants import TaskType
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")

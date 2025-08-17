@@ -16,6 +16,7 @@ def _is_admin(update: Update) -> bool:
     """Checks if the user issuing the command is the configured admin."""
     config = get_settings()
     admin_id = str(config.telegram.admin_id)
+    # Guard clause to ensure effective_user exists
     if not update.effective_user or not admin_id:
         return False
     return str(update.effective_user.id) == admin_id
@@ -35,9 +36,6 @@ def _create_start_menu(update: Update) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton("Trigger Portfolio Review", callback_data="trigger_portfolio"),
                 InlineKeyboardButton("Trigger Covered Call Review", callback_data="trigger_covered_call"),
-            ],
-            [
-                InlineKeyboardButton("⚠️ Clear Unstarted Queue", callback_data="clear_unstarted_queue"),
             ],
         ]
         keyboard.extend(admin_keyboard)
@@ -62,6 +60,9 @@ def _generate_welcome_text() -> str:
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Sends a welcome message with instructions when the /start command is issued."""
+    # Guard clause: This command must come from a message.
+    if not update.message:
+        return
     reply_markup = _create_start_menu(update)
     await update.message.reply_text(
         _generate_welcome_text(), parse_mode="Markdown", reply_markup=reply_markup
@@ -69,6 +70,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def _handle_task_creation(update: Update, context: ContextTypes.DEFAULT_TYPE, task_type: TaskType, friendly_name: str):
     """Generic helper to handle queuing tasks that require a company name."""
+    # Guard clause: Must have a message and a user to proceed.
+    if not update.message or not update.effective_user:
+        return
+
     if not context.args:
         await update.message.reply_text(f"Please provide a ticker. Example: `/{task_type.value.split('_')[0]} NYSE:GME`", parse_mode="Markdown")
         return
@@ -100,6 +105,8 @@ async def tactical_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await _handle_task_creation(update, context, TaskType.DAILY_MONITOR, "Tactical")
 
 async def add_daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.effective_user:
+        return
     if not context.args:
         await update.message.reply_text("Please provide a ticker. Example: `/add NASDAQ:AAPL`")
         return
@@ -115,6 +122,8 @@ async def add_daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text(f"🔹 `{company_name}` is already on the list or a database error occurred.", parse_mode="Markdown")
 
 async def remove_daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message:
+        return
     if not context.args:
         await update.message.reply_text("Please provide a ticker. Example: `/remove NASDAQ:AAPL`")
         return
@@ -136,30 +145,38 @@ async def list_daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         company_list = "\n".join([f"• `{company}`" for company in companies])
         message_text = f"**Daily Monitoring List:**\n{company_list}"
 
+    # Handle both button clicks and typed commands
     if update.callback_query:
         await update.callback_query.edit_message_text(text=message_text, parse_mode="Markdown")
-    else:
+    elif update.message:
         await update.message.reply_text(text=message_text, parse_mode="Markdown")
 
 # --- Admin Command Handlers ---
 
 async def _handle_admin_task_creation(update: Update, task_type: TaskType, success_message: str):
-    """Generic helper for queuing admin tasks that don't need a company name."""
-    if not _is_admin(update):
-        await update.callback_query.answer("⛔️ Admin access required.", show_alert=True)
+    """Generic helper for queuing admin tasks from buttons."""
+    query = update.callback_query
+    user = update.effective_user
+    if not query or not user:
         return
 
-    user = update.effective_user
+    if not _is_admin(update):
+        await query.answer("⛔️ Admin access required.", show_alert=True)
+        return
+
     task_id = db.queue_task(task_type=task_type, requested_by=f"telegram_admin:{user.id}")
 
     if task_id:
-        await update.callback_query.edit_message_text(text=success_message)
+        await query.edit_message_text(text=success_message)
     else:
-        await update.callback_query.edit_message_text(text="❌ Sorry, a database error occurred.")
+        await query.edit_message_text(text="❌ Sorry, a database error occurred.")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Parses the CallbackQuery and runs the appropriate command."""
     query = update.callback_query
+    if not query:
+        return
+        
     await query.answer()
     command = query.data
 
@@ -171,7 +188,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await _handle_admin_task_creation(update, TaskType.PORTFOLIO_REVIEW, "✅ Portfolio review task has been queued.")
     elif command == "trigger_covered_call":
         await _handle_admin_task_creation(update, TaskType.COVERED_CALL_REVIEW, "✅ Covered call review task has been queued.")
-    # Add other admin button handlers here...
     else:
         await query.edit_message_text(text=f"Action '{command}' is not yet implemented.")
 

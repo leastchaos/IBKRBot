@@ -2,7 +2,7 @@
 import logging
 
 from genai.browser_actions import Browser
-from genai.helpers.helpers import save_debug_screenshot
+from genai.common.utils import save_debug_screenshot
 
 
 def perform_deep_research(browser: Browser, prompt: str) -> bool:

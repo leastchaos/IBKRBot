@@ -64,7 +64,7 @@ undervalued_screener: |
   [Company 2 Name & Ticker (if applicable)]: Initiate Long Position within the range of [Buy Range].
   //-- EXECUTIVE SUMMARY END --//
 
-EXTRACT_TICKERS_PROMPT: |
+extract_tickers: |
   """Analyze the preceding report and extract the main stock tickers being analyzed and its corresponding primary stock exchange.
   Your response must contain ONLY a comma-separated list of exchange-ticker pairs using the format EXCHANGE:TICKER.
   If the exchange is not explicitly mentioned for a ticker, use the ticker's main listing exchange. 
@@ -131,16 +131,6 @@ company_deep_dive: |
 
   The stock ticker to be analyzed is:
 
-FOLLOWUP_DEEPDIVE_PROMPT: |
-  From the detailed report above, extract the key information and format your response *exactly* as follows. Do not add any other text, headers, or explanations. Fill in the data based on the report.
-  **Current Price:** [The current price from the report]
-  **Investment Direction:** [The investment direction from the report (e.g., Buy, Hold, Sell)]
-  **Entry Range:** [The entry price range from the report]
-  **Exit Range:** [The exit price range or target from the report]
-  **Thesis:**
-  [A concise, summary of the investment thesis from the report, suitable for a message not exceeding 4000 characters.]
-  """
-
 daily_monitor: |
   """You are a tactical execution analyst. A Google Doc containing a full, pre-approved investment thesis for a stock has been attached to this session. Your task is to use that document as context to determine if today is an opportune moment to initiate a position/adjust a position held.
 
@@ -198,7 +188,7 @@ daily_monitor: |
   //-- EXECUTIVE SUMMARY END --//
 
 
-PROMPT_BUY_RANGE_CHECK: |
+buy_range_check: |
   "Based on the full report above, is the current stock price inside the 'BUY' range you identified? Please answer with only 'YES' or 'NO'."
 
 portfolio_review: |

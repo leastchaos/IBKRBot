@@ -6,38 +6,15 @@ from typing import Any, Dict
 
 from selenium.common.exceptions import (NoSuchWindowException,
                                         WebDriverException)
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.remote.webdriver import WebDriver
 
 from genai import post_processing, workflows
 from genai.browser_actions import Browser
-from genai.constants import (JOB_TIMEOUT_SECONDS, MONITORING_INTERVAL_SECONDS,
-                           RECOVERABLE_ERROR_PHRASE,
-                           SOMETHING_WENT_WRONG_RESPONSE, TaskType)
+from genai.constants import (GEMINI_URL, JOB_TIMEOUT_SECONDS, MONITORING_INTERVAL_SECONDS,
+                           TaskType)
 from genai.database import api as db
 from genai.common.config import Settings, get_settings
-from genai.helpers.helpers import get_prompt, save_debug_screenshot
-
-# --- State Management ---
-BrowserPool = Dict[str, Browser]
-ActiveJobs = Dict[int, Dict[str, Any]]
-JobCounts = Dict[str, int]
-OriginalTabs = Dict[str, str]
-
-
-@dataclass
-class WorkerState:
-    """A dataclass to hold the mutable state of the worker."""
-    config: Settings
-    active_jobs: ActiveJobs = field(default_factory=dict)
-    browser_pool: BrowserPool = field(default_factory=dict)
-    original_tabs: OriginalTabs = field(default_factory=dict)
-    account_job_counts: JobCounts = field(default_factory=dict)
-
-    def __post_init__(self):
-        """Initialize job counts after the object is created."""
-        self.account_job_counts = {acc.name: 0 for acc in self.config.chrome.accounts}
+from genai.common.utils import get_prompt
+from genai.models import ResearchJob, WorkerState
 
 
 # --- Worker Core Functions ---
@@ -45,11 +22,22 @@ class WorkerState:
 def _ensure_drivers_are_running(state: WorkerState, headless: bool):
     """Ensures a WebDriver instance is running for each configured account."""
     for account in state.config.chrome.accounts:
-        # ... (logic to detect crashed driver remains the same) ...
+        driver_crashed = False
+        if account.name in state.browser_pool:
+            try:
+                _ = state.browser_pool[account.name].driver.current_window_handle
+            except (NoSuchWindowException, WebDriverException):
+                logging.warning(f"Driver for account '{account.name}' appears to have crashed.")
+                driver_crashed = True
+
+            if driver_crashed:
+                state.account_job_counts[account.name] = 0
+                del state.browser_pool[account.name]
+                if account.name in state.original_tabs:
+                    del state.original_tabs[account.name]
 
         if account.name not in state.browser_pool:
             try:
-                # --- THIS IS THE CLEANER WAY TO INITIALIZE ---
                 browser_instance = Browser.initialize(
                     user_data_dir=account.user_data_dir,
                     profile_directory=account.profile_directory,
@@ -90,32 +78,36 @@ def _dispatch_new_task(state: WorkerState):
     browser.driver.switch_to.new_window("tab")
     new_handle = browser.driver.current_window_handle
     
-    browser.navigate_to_url("https://genai.google.com/")
+    browser.navigate_to_url(GEMINI_URL)
     
     prompt = get_prompt(task_type.value)
-    if not prompt:
+    if not prompt or task_type not in [TaskType.COMPANY_DEEP_DIVE, TaskType.SHORT_COMPANY_DEEP_DIVE, TaskType.BUY_THE_DIP]:
         logging.error(f"Prompt for task type '{task_type.value}' not found.")
         db.handle_task_failure(task_id, "Prompt not found")
         return
+
     success = False
     
-    # --- Workflow Delegation ---
     if task_type in [TaskType.COMPANY_DEEP_DIVE, TaskType.SHORT_COMPANY_DEEP_DIVE, TaskType.BUY_THE_DIP]:
         success = workflows.perform_deep_research(browser, f"{prompt} {company_name}")
     elif task_type == TaskType.UNDERVALUED_SCREENER:
          success = workflows.perform_deep_research(browser, prompt)
     elif task_type == TaskType.PORTFOLIO_REVIEW:
         success = workflows.perform_portfolio_review(browser, prompt, state.config.drive.portfolio_sheet_url)
-    # Add other workflows here...
     else:
         logging.warning(f"No workflow defined for task type: {task_type.value}")
 
     if success:
-        state.active_jobs[task_id] = {
-            "task_id": task_id, "handle": new_handle, "company_name": company_name or task_type.value,
-            "status": "processing", "started_at": time.time(), "task_type": task_type,
-            "account_name": available_account.name, "requested_by": requested_by,
-        }
+        new_job = ResearchJob(
+            task_id=task_id,
+            handle=new_handle,
+            company_name=company_name or task_type.value,
+            task_type=task_type,
+            account_name=available_account.name,
+            requested_by=requested_by,
+            started_at=time.time(),
+        )
+        state.active_jobs[task_id] = new_job
     else:
         db.handle_task_failure(task_id, "Failed to launch research in browser.")
         state.account_job_counts[available_account.name] -= 1
@@ -126,7 +118,7 @@ def _check_and_process_completed_jobs(state: WorkerState):
     """Checks active jobs, processes them if complete, and handles timeouts."""
     completed_task_ids = set()
     for task_id, job in list(state.active_jobs.items()):
-        account_name = job["account_name"]
+        account_name = job.account_name
         browser = state.browser_pool.get(account_name)
 
         if not browser:
@@ -135,21 +127,25 @@ def _check_and_process_completed_jobs(state: WorkerState):
             continue
 
         try:
-            browser.driver.switch_to.window(job["handle"])
+            browser.driver.switch_to.window(job.handle)
             
-            # Use a method in Browser class to check if job is done
             if browser.is_job_complete():
                 logging.info(f"Task {task_id} is complete. Starting post-processing.")
-                if job['task_type'] == TaskType.UNDERVALUED_SCREENER:
+                
+                if job.task_type == TaskType.UNDERVALUED_SCREENER:
                     status, results = post_processing.run_post_processing_for_screener(browser, job)
                 else:
                     status, results = post_processing.run_post_processing_for_standard_job(browser, job, state.config)
                 
-                db.update_task_result(task_id, status, results)
+                if status == "completed":
+                    db.update_task_result(task_id, results.get("report_url", ""), results.get("summary", ""))
+                else:
+                    db.handle_task_failure(task_id, results.get("error_message", "Post-processing failed."))
+                
                 completed_task_ids.add(task_id)
 
-            elif time.time() - job["started_at"] > JOB_TIMEOUT_SECONDS:
-                logging.warning(f"Task {task_id} for '{job['company_name']}' has timed out.")
+            elif time.time() - job.started_at > JOB_TIMEOUT_SECONDS:
+                logging.warning(f"Task {task_id} for '{job.company_name}' has timed out.")
                 db.handle_task_failure(task_id, "Job timed out")
                 completed_task_ids.add(task_id)
 
@@ -166,19 +162,18 @@ def _check_and_process_completed_jobs(state: WorkerState):
     for task_id in completed_task_ids:
         if task_id in state.active_jobs:
             job = state.active_jobs.pop(task_id)
-            account_name = job["account_name"]
+            account_name = job.account_name
             browser = state.browser_pool.get(account_name)
             
             state.account_job_counts[account_name] = max(0, state.account_job_counts[account_name] - 1)
             
             if browser:
                 try:
-                    browser.driver.switch_to.window(job["handle"])
+                    browser.driver.switch_to.window(job.handle)
                     browser.driver.close()
                     browser.driver.switch_to.window(state.original_tabs[account_name])
                 except (NoSuchWindowException, KeyError):
                     logging.warning(f"Could not close tab for job {task_id}, it may have already been closed.")
-
 
 def _shutdown(state: WorkerState):
     """Gracefully shuts down all browser instances."""
@@ -186,7 +181,6 @@ def _shutdown(state: WorkerState):
     for browser in state.browser_pool.values():
         if browser.driver:
             browser.driver.quit()
-
 
 def main(headless: bool = True):
     """The main entry point and loop for the worker."""

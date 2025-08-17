@@ -10,12 +10,12 @@ from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build, Resource
 from googleapiclient.errors import HttpError
-
+from google.auth.external_account_authorized_user import Credentials as ExternalAccountCredentials
 # --- Internal imports ---
 from genai.constants import GDRIVE_SCOPES
 
 
-def _load_or_refresh_credentials(account_name: str) -> Credentials | None:
+def _load_or_refresh_credentials(account_name: str) -> Credentials | ExternalAccountCredentials | None:
     """
     Private helper to handle loading, refreshing, or creating credentials
     for a specific account.
@@ -189,7 +189,7 @@ if __name__ == "__main__":
 
     logging.info("Authentication successful.")
 
-    from genai.helpers.config import get_settings
+    from genai.common.config import get_settings
 
     config = get_settings()
     reports_folder_id = config.drive.folder_id

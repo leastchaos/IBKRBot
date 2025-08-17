@@ -5,12 +5,26 @@ import re
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from genai.constants import TaskType
-from genai.helpers.config import load_prompts
+import yaml
+from yaml import SafeLoader
 
 # To prevent circular imports with type hints
 if TYPE_CHECKING:
     from selenium.webdriver.remote.webdriver import WebDriver
+
+
+def load_prompts() -> dict[str, str]:
+    """Loads and returns the prompts from the prompts.yml file."""
+    prompts_path = os.path.join(os.getcwd(), "genai", "prompts.yml")
+    try:
+        with open(prompts_path, "r", encoding="utf-8") as f:
+            return yaml.load(f, Loader=SafeLoader)
+    except FileNotFoundError:
+        logging.error(f"FATAL: Prompts file not found at {prompts_path}.")
+        return {}
+    except yaml.YAMLError as e:
+        logging.error(f"FATAL: Error parsing prompts.yml file: {e}")
+        return {}
 
 
 def retry_on_exception(func):
@@ -79,6 +93,8 @@ def get_prompt(task_type: str, date_format: str = "%Y-%m-%d") -> str | None:
     prompt_template = prompts.get(task_type)
     if prompt_template:
         if date_format:
-            prompt_template = prompt_template.replace("[CURRENT_DATE]", datetime.now().strftime(date_format))
+            prompt_template = prompt_template.replace(
+                "[CURRENT_DATE]", datetime.now().strftime(date_format)
+            )
         return prompt_template
     return None

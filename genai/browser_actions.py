@@ -13,8 +13,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from genai.constants import (
     ADD_FILE_BUTTON_XPATH,
     ADD_FROM_DRIVE_BUTTON_XPATH,
-    CLOSE_SHARE_DIALOG_BUTTON_XPATH,
-    CREATE_PUBLIC_LINK_BUTTON_XPATH,
     DEEP_RESEARCH_BUTTON_XPATH,
     DRIVE_URL_INPUT_CSS,
     EXPORT_TO_DOCS_BUTTON_XPATH,
@@ -22,15 +20,13 @@ from genai.constants import (
     INSERT_BUTTON_XPATH,
     PICKER_IFRAME_XPATH,
     PROMPT_TEXTAREA_CSS,
-    PUBLIC_URL_INPUT_XPATH,
     RESPONSE_CONTENT_CSS,
-    SHARE_BUTTON_XPATH,
     SHARE_EXPORT_BUTTON_XPATH,
     START_RESEARCH_BUTTON_XPATH,
     TOOLS_BUTTON_XPATH,
 )
 from genai.helpers.google_api_helpers import get_doc_id_from_url
-from genai.helpers.helpers import save_debug_screenshot
+from genai.common.utils import save_debug_screenshot
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -64,7 +60,12 @@ class Browser:
         if headless:
             chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--start-maximized")
-        # ... (all other chrome options from your initialize_driver function) ...
+
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
         chrome_options.add_argument(f"--profile-directory={profile_directory}")
 
@@ -77,7 +78,7 @@ class Browser:
 
         service = Service(executable_path=webdriver_path) if webdriver_path else None
         driver = webdriver.Chrome(service=service, options=chrome_options)
-
+        logging.info("WebDriver initialized successfully.")
         # Return an instance of the class itself
         return cls(driver)
 
@@ -280,3 +281,18 @@ class Browser:
             # The lower-level functions already log the details, so we just add context.
             logging.error(f"Failed to get a response for prompt: '{prompt[:50]}...'")
             return None
+
+    def is_job_complete(self) -> bool:
+        """
+        Checks if the current page indicates that a research job is complete.
+        This is determined by the presence of the 'Share & Export' button.
+        """
+        try:
+            # Use a very short timeout to avoid waiting if the element isn't there.
+            # We are just checking for presence, not waiting for it to appear.
+            WebDriverWait(self.driver, 0.5).until(
+                EC.presence_of_element_located((By.XPATH, SHARE_EXPORT_BUTTON_XPATH))
+            )
+            return True
+        except TimeoutException:
+            return False
