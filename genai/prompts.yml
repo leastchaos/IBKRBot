@@ -122,9 +122,13 @@ company_deep_dive: |
   Structure your response for this section *exactly* as follows, filling in the data from your analysis:
 
   //-- EXECUTIVE SUMMARY START --//
-  Reiterate your investment thesis (Buy/Sell/Hold).
-  Provide a specific price target.
-  Define a clear price range for entering a long position or exiting an existing position.
+  **Ticker:** [TICKER]
+  **Stance:** [Your final, core recommendation]
+  **Key Price Levels:**
+  - Action Range: [Your defined entry/action range]
+  - Target / Exit: [Your defined price target or exit level]
+  **Thesis Summary:**
+  [A concise, well-written summary of the core thesis and rationale.]
   //-- EXECUTIVE SUMMARY END --//
 
   Your analysis should be based solely on publicly available information up to the present date.
