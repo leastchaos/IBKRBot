@@ -1,5 +1,6 @@
 # genai/database/api.py
 import logging
+import os
 import sqlite3
 
 from genai.constants import DATABASE_PATH, MAX_RETRIES, TaskType
@@ -208,3 +209,37 @@ def get_daily_monitoring_list() -> list[str]:
     except sqlite3.Error as e:
         logging.error(f"Database error listing daily companies: {e}")
         return []
+    
+def trigger_daily_monitor_task() -> list[str]:
+    """Queues a new daily monitor task."""
+    logging.info("Triggering daily monitor task...")
+    companies_monitored = []
+    try:
+        with _connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT company_name FROM daily_monitoring_list")
+            companies = cursor.fetchall()
+        if not companies:
+            logging.warning("No companies found in the daily monitoring list.")
+            return []
+        for company in companies:
+            logging.info(f"Queuing daily monitor task for {company[0]}")
+            task_id = queue_task(
+                task_type=TaskType.TACTICAL_REVIEW,  # Assuming TACTICAL_REVIEW is the correct type for daily monitoring
+                requested_by="daily_monitor_trigger",
+                company_name=company[0]
+            )
+            if task_id:
+                logging.info(f"Successfully queued daily monitor task for {company[0]} with ID {task_id}")
+                companies_monitored.append(company[0])
+            else:
+                logging.error(f"Failed to queue daily monitor task for {company[0]}")
+    except sqlite3.Error as e:
+        logging.error(f"Database error triggering daily monitor task: {e}")
+    return companies_monitored
+    
+if __name__ == "__main__":
+    # This is just for testing the database setup
+    logging.basicConfig(level=logging.INFO)
+    trigger_daily_monitor_task()
+    logging.info("Database setup complete.")

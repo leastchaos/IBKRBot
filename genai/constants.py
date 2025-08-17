@@ -48,7 +48,7 @@ class TaskType(str, Enum):
     """Defines the valid types of tasks the worker can process."""
 
     COMPANY_DEEP_DIVE = "company_deep_dive"
-    DAILY_MONITOR = "daily_monitor"
+    TACTICAL_REVIEW = "tactical_review"
     UNDERVALUED_SCREENER = "undervalued_screener"
     PORTFOLIO_REVIEW = "portfolio_review"
     SHORT_COMPANY_DEEP_DIVE = "short_company_deep_dive"

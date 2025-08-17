@@ -1,8 +1,14 @@
 # genai/workflow.py
+from datetime import datetime, timedelta
 import logging
+from typing import Callable
 
 from genai.browser_actions import Browser
 from genai.common.utils import save_debug_screenshot
+from genai.constants import TaskType
+from genai.database.api import get_latest_report_info
+
+# This is the registry
 
 
 def perform_deep_research(browser: Browser, prompt: str) -> bool:
@@ -23,12 +29,16 @@ def perform_deep_research(browser: Browser, prompt: str) -> bool:
         logging.info("Deep Research initiated successfully.")
         return True
     except Exception:
-        logging.error("An error occurred during Deep Research initiation.", exc_info=True)
+        logging.error(
+            "An error occurred during Deep Research initiation.", exc_info=True
+        )
         save_debug_screenshot(browser.driver, "deep_research_error")
         return False
 
 
-def perform_daily_monitor_research(browser: Browser, prompt: str, report_url: str) -> bool:
+def perform_tactical_research(
+    browser: Browser, prompt: str, company_name: str
+) -> bool:
     """
     Handles the workflow for a daily monitor task.
 
@@ -41,6 +51,17 @@ def perform_daily_monitor_research(browser: Browser, prompt: str, report_url: st
         True if the task was initiated successfully, False otherwise.
     """
     try:
+        report_info = get_latest_report_info(company_name)
+        if not report_info:
+            logging.error(f"No report found for company '{company_name}'.")
+            return False
+        report_url, timestamp = report_info
+        logging.info(f"Found latest report for '{company_name}': {report_url} at {timestamp}")
+        if timestamp < (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d"):
+            logging.warning(
+                f"Report for '{company_name}' is older than 7 days. Skipping daily monitor."
+            )
+            return False
         logging.info(f"Starting daily monitor workflow. Attaching doc: {report_url}")
         browser.navigate_to_deep_research_prompt()
         browser.attach_drive_file(report_url)
@@ -49,7 +70,9 @@ def perform_daily_monitor_research(browser: Browser, prompt: str, report_url: st
         logging.info("Daily monitor research initiated successfully.")
         return True
     except Exception:
-        logging.error("An error occurred during the daily monitor workflow.", exc_info=True)
+        logging.error(
+            "An error occurred during the daily monitor workflow.", exc_info=True
+        )
         save_debug_screenshot(browser.driver, "daily_monitor_error")
         return False
 
@@ -76,9 +99,20 @@ def perform_portfolio_review(browser: Browser, prompt: str, sheet_url: str) -> b
         logging.info("Portfolio review initiated successfully.")
         return True
     except Exception:
-        logging.error("An error occurred during the portfolio review workflow.", exc_info=True)
+        logging.error(
+            "An error occurred during the portfolio review workflow.", exc_info=True
+        )
         save_debug_screenshot(browser.driver, "portfolio_review_error")
         return False
 
-# Note: The 'process_completed_job' and other functions have been removed.
-# They will be moved to a new 'post_processing.py' file in a later step.
+
+# This is the registry
+WORKFLOW_REGISTRY: dict[TaskType, Callable[..., bool]] = {
+    TaskType.COMPANY_DEEP_DIVE: perform_deep_research,
+    TaskType.SHORT_COMPANY_DEEP_DIVE: perform_deep_research,
+    TaskType.BUY_THE_DIP: perform_deep_research,
+    TaskType.TACTICAL_REVIEW: perform_tactical_research,  # Example: maybe it needs a different function
+    TaskType.UNDERVALUED_SCREENER: perform_deep_research,
+    TaskType.PORTFOLIO_REVIEW: perform_portfolio_review,
+    TaskType.COVERED_CALL_REVIEW: perform_portfolio_review,
+}

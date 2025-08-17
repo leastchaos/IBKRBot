@@ -92,6 +92,24 @@ async def _handle_task_creation(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text("Sorry, there was a database error.")
 
+async def trigger_daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles the /trigger_daily command to queue a daily monitor task."""
+    # Guard clause: Must be an admin to trigger this task.
+    query = update.callback_query
+    user = update.effective_user
+    if not query or not user:
+        return
+
+    if not _is_admin(update):
+        await query.answer("⛔️ Admin access required.", show_alert=True)
+        return
+
+    task_ids = db.trigger_daily_monitor_task()
+    if task_ids:
+        await query.edit_message_text(text="✅ Daily monitor task has been queued for the latest companies.")
+    else:
+        await query.edit_message_text(text="❌ Sorry, a database error occurred.")
+
 async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _handle_task_creation(update, context, TaskType.COMPANY_DEEP_DIVE, "Deep-Dive")
 
@@ -102,7 +120,7 @@ async def buy_the_dip_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await _handle_task_creation(update, context, TaskType.BUY_THE_DIP, "Buy-The-Dip Analysis")
 
 async def tactical_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _handle_task_creation(update, context, TaskType.DAILY_MONITOR, "Tactical")
+    await _handle_task_creation(update, context, TaskType.TACTICAL_REVIEW, "Tactical")
 
 async def add_daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user:
@@ -188,6 +206,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await _handle_admin_task_creation(update, TaskType.PORTFOLIO_REVIEW, "✅ Portfolio review task has been queued.")
     elif command == "trigger_covered_call":
         await _handle_admin_task_creation(update, TaskType.COVERED_CALL_REVIEW, "✅ Covered call review task has been queued.")
+    elif command == "trigger_daily":
+        await trigger_daily_command(update, context)
     else:
         await query.edit_message_text(text=f"Action '{command}' is not yet implemented.")
 

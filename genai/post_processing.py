@@ -114,7 +114,7 @@ def run_post_processing_for_standard_job(browser: Browser, job: ResearchJob, con
         if _perform_buy_range_check(browser, buy_range_prompt):
             # Call the new generic function with the specific follow-up type
             queue_task(
-                task_type=TaskType.DAILY_MONITOR,
+                task_type=TaskType.TACTICAL_REVIEW,
                 company_name=company_name,
                 requested_by=f"follow_up_from_task_{job.task_id}"
             )

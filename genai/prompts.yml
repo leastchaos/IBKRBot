@@ -131,7 +131,7 @@ company_deep_dive: |
 
   The stock ticker to be analyzed is:
 
-daily_monitor: |
+tactical_review: |
   """You are a tactical execution analyst. A Google Doc containing a full, pre-approved investment thesis for a stock has been attached to this session. Your task is to use that document as context to determine if today is an opportune moment to initiate a position/adjust a position held.
 
   //-- ANALYSIS PROTOCOL --//
