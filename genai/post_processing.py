@@ -121,8 +121,12 @@ def run_post_processing_for_standard_job(browser: Browser, job: ResearchJob, con
     return "completed", final_results
 
 
-def run_post_processing_for_screener(browser: Browser, job: ResearchJob) -> tuple[str, ProcessingResult]:
+def run_post_processing_for_screener(browser: Browser, job: ResearchJob, config: Settings) -> tuple[str, ProcessingResult]:
     """Processes a completed screener job by extracting tickers and queuing new tasks."""
+    status, results = run_post_processing_for_standard_job(browser, job, config)
+    if status != "completed":
+        logging.error(f"Failed to process screener job {job.task_id}: {results.get('error_message', 'Unknown error')}")
+        return status, results
     logging.info(f"Screener task {job.task_id} complete. Extracting tickers...")
     try:
         extract_tickers_prompt = get_prompt(TaskType.EXTRACT_TICKERS)

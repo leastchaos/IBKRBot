@@ -110,6 +110,8 @@ def _dispatch_new_task(state: WorkerState):
         success = workflow_func(browser, prompt, state.config.drive.portfolio_sheet_url)
     elif task_type == TaskType.TACTICAL_REVIEW:
         success = workflow_func(browser, prompt, company_name)
+    elif task_type == TaskType.UNDERVALUED_SCREENER:
+        success = workflow_func(browser, prompt)
     else:
         # For tasks that may or may not have a company name
         full_prompt = f"{prompt} {company_name}" if company_name else prompt
@@ -154,7 +156,7 @@ def _check_and_process_completed_jobs(state: WorkerState):
 
                 if job.task_type == TaskType.UNDERVALUED_SCREENER:
                     status, results = post_processing.run_post_processing_for_screener(
-                        browser, job
+                        browser, job, state.config
                     )
                 else:
                     status, results = (
