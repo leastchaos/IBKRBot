@@ -60,3 +60,4 @@ class TaskType(str, Enum):
     SHORT_COMPANY_DEEP_DIVE = "short_company_deep_dive"
     BUY_THE_DIP = "buy_the_dip"
     COVERED_CALL_REVIEW = "covered_call_strategy_review"
+    BUY_RANGE_CHECK = "buy_range_check"
