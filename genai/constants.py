@@ -56,3 +56,4 @@ class TaskType(str, Enum):
     COVERED_CALL_REVIEW = "covered_call_strategy_review"
     BUY_RANGE_CHECK = "buy_range_check"
     EXTRACT_TICKERS = "extract_tickers"
+    OTB_COVERED_CALL_REVIEW = "otb_covered_call_strategy_review"

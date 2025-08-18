@@ -47,6 +47,15 @@ def _create_start_menu(update: Update) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    "Trigger OTB Covered Call Review",
+                    callback_data="trigger_otb_covered_call",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "Delete All Completed Tasks", callback_data="delete_all_completed"
+                ),
+                InlineKeyboardButton(
                     "Delete All Unprocessed Tasks", callback_data="delete_all_unprocessed"
                 ),
             ],
@@ -309,6 +318,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             update,
             TaskType.COVERED_CALL_REVIEW,
             "✅ Covered call review task has been queued.",
+        )
+    elif command == "trigger_otb_covered_call":
+        await _handle_admin_task_creation(
+            update,
+            TaskType.OTB_COVERED_CALL_REVIEW,
+            "✅ OTB covered call review task has been queued.",
         )
     elif command == "trigger_daily":
         await trigger_daily_command(update, context)
