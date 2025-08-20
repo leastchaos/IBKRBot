@@ -15,11 +15,11 @@ class ResearchJob:
 
     task_id: int
     handle: str
-    company_name: str
     task_type: TaskType
     account_name: str
     requested_by: str | None
     started_at: float
+    company_name: str | None = None
     status: str = "processing"
     error_recovery_attempted: bool = False
 

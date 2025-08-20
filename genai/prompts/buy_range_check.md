@@ -1,0 +1,1 @@
+Based on the full report above, is the current stock price inside the 'BUY' range you identified? Please answer with only 'YES' or 'NO'.
