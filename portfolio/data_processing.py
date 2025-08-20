@@ -74,12 +74,11 @@ def calculate_worst_case_risk(row) -> float | None:
     multiplier = float(row["Multiplier"]) if row["Multiplier"] else 1
     strike = row["Strike"]
     right = row["Right"]
-    lowest_price = row["LowestPrice"]  # Get the worst-case price
 
     if sec_type == "STK" and position > 0:  # Long stock
         # Assume the market price drops to the worst-case price
         return (
-            (market_price - min(lowest_price, 0.8 * market_price))
+            (market_price - min(0, 0.8 * market_price))
             * position
             * forex_rate
         )
@@ -87,7 +86,7 @@ def calculate_worst_case_risk(row) -> float | None:
         # Assume the market price drops to the worst-case price
         return (
             -position
-            * (strike - min(lowest_price, 0.8 * strike))
+            * (strike - min(0, 0.8 * strike))
             * multiplier
             * forex_rate
             + position * market_price * forex_rate
@@ -287,6 +286,8 @@ def process_positions_data(
     scenario_df: pd.DataFrame,
 ) -> pd.DataFrame:
     logger.info("Processing positions data...")
+    positions_df['Symbol'] = positions_df['Symbol'].astype(str)
+    scenario_df['UnderlyingSymbol'] = scenario_df['UnderlyingSymbol'].astype(str)
     # Merge scenario prices into positions_df
     positions_df = positions_df.merge(
         scenario_df,
@@ -294,6 +295,8 @@ def process_positions_data(
         right_on="UnderlyingSymbol",
         how="left",
     )
+    # it is not recognizing both Symbol and UnderlyingSymbol as the same e.g. 9988 on Symbol and 9988 on UnderlyingSymbol
+
     positions_df["StockEquivalentMovement"] = (
         positions_df["Delta"] * positions_df["Position"] * positions_df["Multiplier"]
     )
@@ -307,7 +310,6 @@ def process_positions_data(
         * positions_df["Position"]
         * positions_df["Multiplier"]
     )
-    positions_df["LowestPrice"] = positions_df["LowestPrice"].fillna(0)
     positions_df["InitialMaxRisk"] = positions_df.apply(calculate_initial_risk, axis=1)
     positions_df["CurrentMaxRisk"] = positions_df.apply(calculate_current_risk, axis=1)
     positions_df["WorstCaseRisk"] = positions_df.apply(
