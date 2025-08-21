@@ -4,7 +4,6 @@ import logging
 from typing import Callable
 
 from genai.browser_actions import Browser
-from genai.common.utils import save_debug_screenshot
 from genai.constants import TaskType
 from genai.database.api import get_latest_report_info
 
