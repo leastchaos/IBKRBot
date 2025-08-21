@@ -38,7 +38,7 @@ Based on the status, provide one of two verdicts with a clear justification:
 
 ✅ Roll Position: Recommended only when a profitable position can be proactively optimized. Crucially, a roll is only recommended if the underlying stock's current technical and fundamental picture would still qualify it as a "Prime" or "Acceptable" candidate for a new call. The specific triggers are:
 
-(a) High Profit Capture: The short call has captured >80% of its maximum profit with significant time still left until expiration. The remaining potential reward is too small to justify the risk of holding the position. We roll to lock in the gain and redeploy capital into a new, more optimal position.
+(a) Capital Efficiency Review: This is triggered when a short call has captured >80% of its maximum profit. You must then calculate the annualized Return on Capital of the REMAINING premium: (Remaining Premium / Current Stock Price) * (365 / DTE). If this remaining annualized return is below a minimum threshold (e.g., 8%), the capital is considered inefficiently deployed. We roll to lock in the gain and redeploy capital into a new, more optimal position.
 
 (b) Strategic Upward Adjustment: The underlying stock has shown significant strength and our fundamental outlook has become more bullish, but the price is still below the strike. We can roll up and out to a higher strike price to capture more potential upside while booking the profit on the current, now less effective, short call.
 
