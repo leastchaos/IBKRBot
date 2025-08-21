@@ -1,16 +1,8 @@
 from functools import wraps
 import logging
-import os
-import re
 from datetime import datetime
-from typing import TYPE_CHECKING
 
-import yaml
 from pathlib import Path  # Import pathlib
-
-# To prevent circular imports with type hints
-if TYPE_CHECKING:
-    from selenium.webdriver.remote.webdriver import WebDriver
 
 
 def load_prompts() -> dict[str, str]:
@@ -82,27 +74,6 @@ def retry_on_exception(func):
                     raise  # Re-raises the last exception, stopping the script flow
 
     return wrapper
-
-
-def save_debug_screenshot(driver: "WebDriver", filename_prefix: str):
-    """Saves a screenshot to the debug_ss directory with a timestamp."""
-    try:
-        # Create the directory if it doesn't exist
-        debug_dir = os.path.join(os.getcwd(), "debug_ss")
-        os.makedirs(debug_dir, exist_ok=True)
-
-        # Generate a unique filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Sanitize filename prefix to be safe for file systems
-        safe_prefix = re.sub(r'[\\/*?:"<>|]', "", str(filename_prefix))
-        screenshot_path = os.path.join(debug_dir, f"{timestamp}_{safe_prefix}.png")
-
-        driver.save_screenshot(screenshot_path)
-        logging.info(f"Saved debug screenshot to: {screenshot_path}")
-    except Exception as e:
-        # Log if screenshot fails, but don't crash the main exception handling
-        logging.error(f"Failed to save debug screenshot: {e}", exc_info=True)
-
 
 def get_prompt(task_type: str, date_format: str = "%Y-%m-%d", ticker: str | None=None) -> str | None:
     prompts = load_prompts()
