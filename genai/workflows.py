@@ -4,7 +4,6 @@ import logging
 from typing import Callable
 
 from genai.browser_actions import Browser
-from genai.common.utils import save_debug_screenshot
 from genai.constants import TaskType
 from genai.database.api import get_latest_report_info
 
@@ -32,7 +31,7 @@ def perform_deep_research(browser: Browser, prompt: str) -> bool:
         logging.error(
             "An error occurred during Deep Research initiation.", exc_info=True
         )
-        save_debug_screenshot(browser.driver, "deep_research_error")
+        browser.save_debug_screenshot("deep_research_error")
         return False
 
 
@@ -73,7 +72,7 @@ def perform_tactical_research(
         logging.error(
             "An error occurred during the daily monitor workflow.", exc_info=True
         )
-        save_debug_screenshot(browser.driver, "daily_monitor_error")
+        browser.save_debug_screenshot("daily_monitor_error")
         return False
 
 
@@ -102,7 +101,7 @@ def perform_portfolio_review(browser: Browser, prompt: str, sheet_url: str) -> b
         logging.error(
             "An error occurred during the portfolio review workflow.", exc_info=True
         )
-        save_debug_screenshot(browser.driver, "portfolio_review_error")
+        browser.save_debug_screenshot("portfolio_review_error")
         return False
 
 

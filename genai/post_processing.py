@@ -38,12 +38,12 @@ def _extract_summary(report_text: str) -> str:
         logging.warning("Could not find executive summary markers. Using default message.")
         return "Executive summary could not be automatically extracted from the report."
 
-def _manage_drive_file(service: Any, doc_id: str, company_name: str, task_type: str, drive_config: DriveSettings):
+def _manage_drive_file(service: Any, doc_id: str, company_name: str | None, task_type: str, drive_config: DriveSettings):
     """Renames, moves, and shares the Google Doc."""
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        new_doc_title = f"{timestamp}_{company_name}_{task_type}"
-        
+        new_doc_title = f"{timestamp}_{company_name or 'N/A'}_{task_type}"
+
         rename_google_doc(service, doc_id, new_doc_title)
         if drive_config and drive_config.folder_id:
             move_file_to_folder(service, doc_id, drive_config.folder_id)

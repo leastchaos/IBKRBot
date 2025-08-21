@@ -1,5 +1,7 @@
 # genai/browser_actions.py
 import logging
+import os
+import re
 import time
 from datetime import datetime
 
@@ -26,7 +28,6 @@ from genai.constants import (
     TOOLS_BUTTON_XPATH,
 )
 from genai.helpers.google_api_helpers import get_doc_id_from_url
-from genai.common.utils import save_debug_screenshot
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -124,7 +125,7 @@ class Browser:
             logging.error(
                 "Failed to find or interact with prompt textarea.", exc_info=True
             )
-            save_debug_screenshot(self.driver, "enter_prompt_error")
+            self.save_debug_screenshot("enter_prompt_error")
             raise
 
     def navigate_to_deep_research_prompt(self) -> None:
@@ -222,7 +223,7 @@ class Browser:
             return last_text
         except Exception:
             logging.error("An error occurred in get_latest_response.", exc_info=True)
-            save_debug_screenshot(self.driver, "get_response_error")
+            self.save_debug_screenshot("get_response_error")
             return None
 
     def export_and_get_doc_url(self) -> str | None:
@@ -252,7 +253,7 @@ class Browser:
             return doc_url
         except Exception:
             logging.error("An error occurred during report export.", exc_info=True)
-            save_debug_screenshot(self.driver, "export_doc_error")
+            self.save_debug_screenshot("export_doc_error")
             # Attempt to switch back to the original handle to prevent losing control
             if "current_handle" in locals():
                 self.driver.switch_to.window(current_handle)
@@ -296,3 +297,22 @@ class Browser:
             return True
         except TimeoutException:
             return False
+
+    def save_debug_screenshot(self, filename_prefix: str):
+        """Saves a screenshot to the debug_ss directory with a timestamp."""
+        try:
+            # Create the directory if it doesn't exist
+            debug_dir = os.path.join(os.getcwd(), "debug_ss")
+            os.makedirs(debug_dir, exist_ok=True)
+
+            # Generate a unique filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Sanitize filename prefix to be safe for file systems
+            safe_prefix = re.sub(r'[\\/*?:"<>|]', "", str(filename_prefix))
+            screenshot_path = os.path.join(debug_dir, f"{timestamp}_{safe_prefix}.png")
+
+            self.driver.save_screenshot(screenshot_path)
+            logging.info(f"Saved debug screenshot to: {screenshot_path}")
+        except Exception as e:
+            # Log if screenshot fails, but don't crash the main exception handling
+            logging.error(f"Failed to save debug screenshot: {e}", exc_info=True)

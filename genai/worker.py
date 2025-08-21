@@ -81,7 +81,7 @@ def _dispatch_new_task(state: WorkerState):
     browser = state.browser_pool[available_account.name]
 
     logging.info(
-        f"Dispatching task {task_id} ({task_type.value}) to account '{available_account.name}'"
+        f"Dispatching task {task_id} ({task_type.value} {company_name}) to account '{available_account.name}'"
     )
     db.update_task_status(task_id, "processing")
     state.account_job_counts[available_account.name] += 1
@@ -91,7 +91,7 @@ def _dispatch_new_task(state: WorkerState):
 
     browser.navigate_to_url(GEMINI_URL)
 
-    prompt = get_prompt(task_type.value)
+    prompt = get_prompt(task_type.value, ticker=company_name)
     if not prompt:
         logging.error(f"Prompt for task type '{task_type.value}' not found.")
         db.handle_task_failure(task_id, "Prompt not found")
@@ -108,19 +108,16 @@ def _dispatch_new_task(state: WorkerState):
     success = False
     if task_type in [TaskType.PORTFOLIO_REVIEW, TaskType.COVERED_CALL_REVIEW, TaskType.OTB_COVERED_CALL_REVIEW]:
         success = workflow_func(browser, prompt, state.config.drive.portfolio_sheet_url)
-    elif task_type == TaskType.TACTICAL_REVIEW:
+    elif task_type in [TaskType.TACTICAL_REVIEW]:
         success = workflow_func(browser, prompt, company_name)
-    elif task_type == TaskType.UNDERVALUED_SCREENER:
-        success = workflow_func(browser, prompt)
     else:
         # For tasks that may or may not have a company name
-        full_prompt = f"{prompt} {company_name}" if company_name else prompt
-        success = workflow_func(browser, full_prompt)
+        success = workflow_func(browser, prompt)
     if success:
         new_job = ResearchJob(
             task_id=task_id,
             handle=new_handle,
-            company_name=company_name or task_type.value,
+            company_name=company_name,
             task_type=task_type,
             account_name=available_account.name,
             requested_by=requested_by,
