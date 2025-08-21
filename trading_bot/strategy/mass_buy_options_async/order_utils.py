@@ -1,14 +1,14 @@
 from decimal import Decimal
 from math import isnan
 from ib_async import Trade, IB, Ticker
-from src.utils.helpers import option_display
+from trading_bot.utils.helpers import option_display
 import logging
-from src.strategy.mass_buy_options_async.config import TradingConfig
-from src.strategy.mass_buy_options_async.price_utils import (
+from trading_bot.strategy.mass_buy_options_async.config import TradingConfig
+from trading_bot.strategy.mass_buy_options_async.price_utils import (
     determine_price,
     get_stock_price,
 )
-from src.models.models import Action
+from trading_bot.models.models import Action
 
 logger = logging.getLogger()
 
@@ -119,11 +119,11 @@ async def check_if_price_too_far(
 
 if __name__ == "__main__":
     import asyncio
-    from src.utils.logger_config import setup_logger
+    from trading_bot.utils.logger_config import setup_logger
 
     setup_logger()
-    from src.strategy.mass_buy_options_async.config import TradingConfig
-    from src.core.ib_connector import (
+    from trading_bot.strategy.mass_buy_options_async.config import TradingConfig
+    from trading_bot.core.ib_connector import (
         async_connect_to_ibkr,
         async_get_stock_ticker,
         async_get_option_ticker,

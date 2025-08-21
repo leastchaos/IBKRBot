@@ -3,7 +3,7 @@ from ib_async import IB, Contract, LimitOrder, Ticker, Trade
 import logging
 from decimal import Decimal
 
-from src.models.models import OCAOrder, OCAType
+from trading_bot.models.models import OCAOrder, OCAType
 
 logger = logging.getLogger()
 

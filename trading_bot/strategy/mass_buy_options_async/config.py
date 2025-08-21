@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from datetime import datetime
 import logging
-from src.models.models import Action, Rights, OCAType
+from trading_bot.models.models import Action, Rights, OCAType
 from functools import cached_property
 
 

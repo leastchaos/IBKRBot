@@ -3,12 +3,12 @@ from decimal import Decimal
 import logging
 
 from ib_async import Stock
-from src.models.models import Action, OCAType, Rights
-from src.strategy.mass_buy_options_async.config import TradingConfig
-from src.strategy.mass_buy_options_async.trade_executor import mass_trade_oca_option
-from src.core.ib_connector import async_connect_to_ibkr
-from src.utils.helpers import get_ibkr_account
-from src.utils.logger_config import setup_logger
+from trading_bot.models.models import Action, OCAType, Rights
+from trading_bot.strategy.mass_buy_options_async.config import TradingConfig
+from trading_bot.strategy.mass_buy_options_async.trade_executor import mass_trade_oca_option
+from trading_bot.core.ib_connector import async_connect_to_ibkr
+from trading_bot.utils.helpers import get_ibkr_account
+from trading_bot.utils.logger_config import setup_logger
 
 # Configuration
 TRADE_CONFIG = TradingConfig(

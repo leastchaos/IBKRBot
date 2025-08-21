@@ -1,7 +1,7 @@
 from scipy.stats import norm
 import numpy as np
 
-from src.models.models import Rights
+from trading_bot.models.models import Rights
 
 
 def black_scholes_delta(

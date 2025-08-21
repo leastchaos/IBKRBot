@@ -3,15 +3,15 @@ import logging
 from math import isnan
 from ib_async import IB, LimitOrder, Stock, Ticker, Trade
 
-from src.core.order_management import execute_oca_orders, round_to_tick
-from src.core.ib_connector import (
+from trading_bot.core.order_management import execute_oca_orders, round_to_tick
+from trading_bot.core.ib_connector import (
     get_current_position,
     get_option_ticker_from_contract,
     get_options,
     wait_for_subscription,
 )
-from src.models.models import Action, OCAOrder, OCAType, Rights
-from src.utils.helpers import option_display, get_price_at_depth
+from trading_bot.models.models import Action, OCAOrder, OCAType, Rights
+from trading_bot.utils.helpers import option_display, get_price_at_depth
 
 logger = logging.getLogger()
 
@@ -399,9 +399,9 @@ def mass_trade_oca_option(
 
 
 if __name__ == "__main__":
-    from src.utils.logger_config import setup_logger
-    from src.utils.helpers import get_ibkr_account
-    from src.core.ib_connector import connect_to_ibkr, get_stock_ticker
+    from trading_bot.utils.logger_config import setup_logger
+    from trading_bot.utils.helpers import get_ibkr_account
+    from trading_bot.core.ib_connector import connect_to_ibkr, get_stock_ticker
     from datetime import datetime
 
     setup_logger()

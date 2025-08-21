@@ -1,20 +1,20 @@
 import asyncio
 from decimal import Decimal
 from ib_async import IB, Contract, LimitOrder, OrderStatus, Stock, Ticker, Trade
-from src.core.ib_connector import (
+from trading_bot.core.ib_connector import (
     async_get_option_ticker_from_contract,
     async_get_options,
     async_get_stock_ticker,
     get_current_position,
     get_option_ticker_from_contract,
 )
-from src.models.models import Action
-from src.strategy.mass_buy_options_async.config import TradingConfig
-from src.strategy.mass_buy_options_async.order_utils import (
+from trading_bot.models.models import Action
+from trading_bot.strategy.mass_buy_options_async.config import TradingConfig
+from trading_bot.strategy.mass_buy_options_async.order_utils import (
     check_if_price_too_far,
     manage_open_order,
 )
-from src.strategy.mass_buy_options_async.price_utils import (
+from trading_bot.strategy.mass_buy_options_async.price_utils import (
     determine_price,
     get_stock_price,
 )
@@ -230,8 +230,8 @@ async def mass_trade_oca_option(
     
 
 if __name__ == "__main__":
-    from src.core.ib_connector import async_connect_to_ibkr
-    from src.utils.logger_config import setup_logger
+    from trading_bot.core.ib_connector import async_connect_to_ibkr
+    from trading_bot.utils.logger_config import setup_logger
 
     setup_logger()
 

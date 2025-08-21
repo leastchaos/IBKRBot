@@ -2,10 +2,10 @@ from decimal import Decimal
 import logging
 from ib_async import Ticker, IB, Trade
 from math import isnan
-from src.utils.helpers import get_price_at_depth
-from src.core.order_management import round_to_tick
-from src.models.models import Action
-from src.strategy.mass_buy_options_async.config import TradingConfig
+from trading_bot.utils.helpers import get_price_at_depth
+from trading_bot.core.order_management import round_to_tick
+from trading_bot.models.models import Action
+from trading_bot.strategy.mass_buy_options_async.config import TradingConfig
 import asyncio
 
 logger = logging.getLogger()
@@ -129,14 +129,14 @@ async def determine_price(
 
 
 if __name__ == "__main__":
-    from src.core.ib_connector import (
+    from trading_bot.core.ib_connector import (
         async_connect_to_ibkr,
         async_get_stock_ticker,
         async_get_option_ticker,
     )
-    from src.utils.logger_config import setup_logger
+    from trading_bot.utils.logger_config import setup_logger
     from ib_async import LimitOrder
-    from src.models.models import Action, Rights, OCAType
+    from trading_bot.models.models import Action, Rights, OCAType
     import asyncio
 
     setup_logger()

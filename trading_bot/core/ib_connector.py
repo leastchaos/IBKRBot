@@ -5,7 +5,7 @@ from ib_async import IB, Contract, Option, OptionChain, Stock, Ticker
 import math
 import logging
 import asyncio
-from src.models.models import Rights
+from trading_bot.models.models import Rights
 
 logger = logging.getLogger()
 
@@ -338,7 +338,7 @@ async def async_get_options(
 
 
 if __name__ == "__main__":
-    from src.utils.logger_config import setup_logger
+    from trading_bot.utils.logger_config import setup_logger
 
     setup_logger()
     ib = connect_to_ibkr("127.0.0.1", 7496, 444, readonly=True, account="")
