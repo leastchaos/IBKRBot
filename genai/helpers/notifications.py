@@ -9,7 +9,7 @@ from genai.common.config import TelegramSettings
 from telegram.helpers import escape_markdown
 
 def send_report_to_telegram(
-    company_name: str,
+    company_name: str | None,
     summary_text: str,
     doc_url: str,
     config: TelegramSettings,
@@ -25,7 +25,7 @@ def send_report_to_telegram(
     """
     logging.info(f"Preparing to send text notification for {company_name} (Type: {task_type})")
     logging.info(f"Sending telegram notification with the following details:\n"
-                 f"Company: {company_name}\n"
+                 f"Company: {company_name or 'N/A'}\n"
                  f"Summary: {summary_text}\n"
                  f"Doc URL: {doc_url}\n"
                  f"Task Type: {task_type}\n"
@@ -52,7 +52,7 @@ def send_report_to_telegram(
     logging.info(f"Notification will be sent to chat IDs: {list(chat_ids_to_notify)}")
 
     # 1. Escape all text variables first
-    escaped_company_name = escape_markdown(company_name, version=2)
+    escaped_company_name = escape_markdown(company_name or "N/A", version=2)
     escaped_task_type = escape_markdown(task_type, version=2)
     escaped_admin_id = escape_markdown(config.admin_id, version=2)
     escaped_summary = escape_markdown(summary_text, version=2) if summary_text and not retry_without_summary else ""

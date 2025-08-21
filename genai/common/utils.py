@@ -75,7 +75,7 @@ def retry_on_exception(func):
 
     return wrapper
 
-def get_prompt(task_type: str, date_format: str = "%Y-%m-%d", ticker: str | None=None) -> str | None:
+def get_prompt(task_type: str, ticker: str | None=None) -> str | None:
     prompts = load_prompts()
     logging.debug(f"Loaded prompts: {prompts.keys()}")  # Debugging line to check loaded prompts
     prompt_template = prompts.get(task_type)
@@ -83,10 +83,9 @@ def get_prompt(task_type: str, date_format: str = "%Y-%m-%d", ticker: str | None
     if not prompt_template:
         logging.error(f"Prompt for task type '{task_type}' not found.")
         return None
-    if date_format:
-        prompt_template = prompt_template.replace(
-            "{{CURRENT_DATE}}", datetime.now().strftime(date_format)
-        )
+    prompt_template = prompt_template.replace(
+        "{{CURRENT_DATE}}", datetime.now().strftime("%Y-%m-%d")
+    )
     if ticker:
         prompt_template = prompt_template.replace("{{TICKER}}", ticker)
     return prompt_template

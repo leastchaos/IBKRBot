@@ -28,7 +28,6 @@ from genai.constants import (
     TOOLS_BUTTON_XPATH,
 )
 from genai.helpers.google_api_helpers import get_doc_id_from_url
-from genai.common.utils import save_debug_screenshot
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
