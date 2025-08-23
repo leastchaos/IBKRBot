@@ -335,6 +335,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
 
+async def _queue_daily_reviews(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Queues the daily review tasks (screener, portfolio, covered calls)."""
+    logging.info("Queueing daily scheduled review tasks...")
+    db.queue_task(
+        task_type=TaskType.PORTFOLIO_REVIEW, requested_by="system:daily_job"
+    )
+    db.queue_task(
+        task_type=TaskType.UNDERVALUED_SCREENER, requested_by="system:daily_job"
+    )
+    db.queue_task(
+        task_type=TaskType.COVERED_CALL_REVIEW, requested_by="system:daily_job"
+    )
+    logging.info("Daily scheduled review tasks queued.")
+
+
 def main() -> None:
     """Starts the bot."""
     setup_logging()
@@ -345,6 +360,30 @@ def main() -> None:
         return
 
     application = Application.builder().token(config.telegram.token).build()
+
+    # --- Queue startup and daily tasks ---
+    # Queue tasks on startup
+    logging.info("Queueing startup tasks (Screener, Portfolio, Covered Call)...")
+    db.queue_task(
+        task_type=TaskType.PORTFOLIO_REVIEW, requested_by="system:startup"
+    )
+    db.queue_task(
+        task_type=TaskType.UNDERVALUED_SCREENER, requested_by="system:startup"
+    )
+    db.queue_task(
+        task_type=TaskType.COVERED_CALL_REVIEW, requested_by="system:startup"
+    )
+    logging.info("...startup tasks queued.")
+
+    # Schedule daily tasks
+    if application.job_queue:
+        import datetime
+
+        # Schedule to run at 08:00 UTC every day
+        application.job_queue.run_daily(
+            _queue_daily_reviews, time=datetime.time(hour=8, minute=0)
+        )
+        logging.info("Scheduled daily review tasks for 08:00 UTC.")
 
     # Register all handlers
     application.add_handler(CommandHandler("start", start_command))
