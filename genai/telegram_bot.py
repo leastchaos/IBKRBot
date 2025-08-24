@@ -2,7 +2,8 @@
 import logging
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
+from telegram.ext import filters as Filters
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler
 
 # Use our new, refactored modules
 from genai.common.config import get_settings
@@ -90,6 +91,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Sends a welcome message with instructions when the /start command is issued."""
     # Guard clause: This command must come from a message.
     if not update.message:
+        logging.error("Start command received without a message.")
         return
     reply_markup = _create_start_menu(update)
     await update.message.reply_text(
@@ -105,16 +107,24 @@ async def _handle_task_creation(
 ):
     """Generic helper to handle queuing tasks that require a company name."""
     # Guard clause: Must have a message and a user to proceed.
-    if not update.message or not update.effective_user:
+    logging.info(f"Received update: {update}")
+    logging.info(f"Received context: {context.args}")
+    if not update.message:
+        logging.error("Update missing message.")
+        return
+    if not update.effective_user:
+        logging.error("Update missing effective user.")
         return
 
     if not context.args:
+        # Guard clause: Must have a ticker to proceed.
+        logging.error("No ticker provided.")
         await update.message.reply_text(
             f"Please provide a ticker. Example: `/{task_type.value.split('_')[0]} NYSE:GME`",
             parse_mode="Markdown",
         )
         return
-
+    logging.info(f"Queuing {task_type.value} task from Telegram user {update.effective_user.id}")
     company_name = context.args[0].upper()
     user = update.effective_user
 
@@ -172,6 +182,7 @@ async def delete_all_unprocessed_tasks(
 
 
 async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logging.info("Received /research command")
     await _handle_task_creation(
         update, context, TaskType.COMPANY_DEEP_DIVE, "Deep-Dive"
     )
@@ -362,6 +373,12 @@ async def _queue_daily_reviews(context: ContextTypes.DEFAULT_TYPE) -> None:
     logging.info("Daily scheduled review tasks queued.")
 
 
+async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "⛔️ Unknown command. Please try again.",
+        parse_mode="Markdown",
+    )
+
 def main() -> None:
     """Starts the bot."""
     setup_logging()
@@ -407,7 +424,9 @@ def main() -> None:
     application.add_handler(CommandHandler("add", add_daily_command))
     application.add_handler(CommandHandler("remove", remove_daily_command))
     application.add_handler(CommandHandler("listdaily", list_daily_command))
+    
     application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(Filters.COMMAND,unknown_command))
 
     logging.info("Telegram bot started...")
     application.run_polling()

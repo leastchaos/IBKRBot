@@ -46,13 +46,12 @@ For **every stock** in the portfolio (whether it's uncovered or its previous opt
 * **Alignment with Target Price:** Compare the current stock price to the provided `TargetPrice`. Characterize the status (e.g., "Well below target," "Approaching target," "Target surpassed"). Based on your independent fundamental valuation, comment on whether this `TargetPrice` still appears reasonable, too conservative, or too optimistic in the current environment.
 
 #### **2. Technical Analysis & Tactical Entry**
-* **Market Structure:** Characterize the stock's trend as **Uptrend, Range-Bound, or Downtrend**. This is a critical factor. Justify with key moving averages (e.g., 20EMA, 50SMA) and recent price action.
-* **Key Price Levels:** Identify several significant **support and resistance** levels, noting whether they are derived from daily or weekly charts.
-* **Implied Volatility (IV):** State the current Implied Volatility Rank (IVR). Classify it as High (>50), Moderate (25-50), or Low (<25).
-* **Tactical Entry Signal:** Analyze the stock's current price to find a high-probability entry point. State one of the following:
-    * **✅ Favorable Entry:** The stock is currently testing a major resistance level or is in a technically "overbought" condition (e.g., RSI > 70). This is the ideal time to sell a call.
-    * **⚠️ Approaching Entry:** The stock is in an uptrend but still has room to run before hitting the next major resistance.
-    * **❌ Unfavorable Entry:** The stock is in a downtrend, is oversold, or has just broken out above a key resistance level (we don't want to cap a new breakout).
+* **Market Structure:** Characterize the stock's trend as **Established Uptrend, Range-Bound, Stabilizing Downtrend, or Active Downtrend.**
+* **Key Price Levels:** Identify several significant **support and resistance** levels (daily/weekly).
+* **Implied Volatility (IV):** State the current IV Rank (IVR).
+* **Tactical Entry Signal (Refined Logic):** Analyze the stock's current price to find a high-probability entry point. The rule is universal regardless of the market structure.
+    * **✅ Favorable Entry:** The stock is currently testing a significant **resistance level** OR is in a technically **"overbought" condition** (e.g., RSI > 70). This is the ideal time to sell a call, as the probability of a short-term pause or pullback is elevated.
+    * **❌ Unfavorable Entry:** The stock has just bounced from support, is oversold (e.g., RSI < 30), is in an active decline, or has just broken out above a key resistance with strong momentum.
 
 #### **3. Final "Open" Verdict & Justification**
 Based on the full analysis, provide one of three verdicts:
@@ -66,6 +65,7 @@ If the verdict is Prime or Acceptable, determine the Strategic Path and proceed 
 * **Expiration:** Recommend a specific monthly expiration date, typically 30-45 DTE, that avoids the next earnings report.
 * **Strike Price Selection (Integrated Rationale):** Select a strike by blending the strategic path with the tactical entry.
     * **Standard Path (Undervalued/Fairly Valued Stock AND Below Target):** Prioritize continued upside. The tactical entry at a resistance level is our signal to open the trade, but we give the stock room to appreciate further. **Choose a strike at or above the *next* significant resistance level.**
+    * **Recovery Path (Stabilizing Downtrend):** We've entered at the top of the consolidation range. We want to maximize income and keep the shares. **Choose a strike at or just above the current resistance level.**
     * **Exit Path (Overvalued Stock OR Price Has Met/Exceeded Target Price):** Prioritize generating a high premium and creating an attractive exit point. The goal is assignment. **Choose a strike at or just above the *current* resistance level that triggered our entry signal.**
 * **Justification:** Explain exactly how the chosen path and strike align with your fundamental conclusion, the stock's position relative to its target price, and the current technical entry signal. For example: *"The stock is undervalued and hitting its first resistance at $222, providing a Favorable Entry. Per the Standard Path, we are selecting the $230 strike, which is the next major resistance level, to allow the healthy uptrend room to continue."*
 * **Trade Metrics (Net of Commission):**
@@ -76,30 +76,29 @@ If the verdict is Prime or Acceptable, determine the Strategic Path and proceed 
     * **Return if Assigned:** `((Strike Price - Cost Basis) + Net Premium per Share) / Cost Basis`. (Label as "Mitigated Loss" if negative).
     * **Option Delta (Informational):** Provide the delta of the chosen option.
 
+### **Final Instruction Check**
+
+Before generating the response, verify that a complete, multi-part analysis (Part A or Part B) has been written for **every single stock position** provided in the input data. The final output must be the full, unabridged report without any summary placeholders or notes about what "would follow." Execute the full task for all tickers.
 ---
 ### **Part C: Synthesized Action Plan & Executive Summary**
 
-This is the final step where you combine the results from Part A and Part B to generate a scannable dashboard of concrete actions. Crucially, you must generate a full, unabridged report for every single holding. Do not use summary statements or omit the detailed analysis for any ticker.
+This is the final step where you combine the results from Part A and Part B to generate a scannable dashboard of concrete actions.
 
 #### **1. Management Actions on Existing Positions**
-| Ticker | P/L on Call | **Close Decision (Part A)** | **Open Decision (Part B)** | **FINAL ACTION** |
-| :--- | :--- | :--- | :--- | :--- |
-| **[Ticker]** | [e.g. 92% Profit] | [e.g. ✅ Close (Inefficient)] | [e.g. ✅ Prime Candidate] | **ROLL POSITION** |
-| **[Ticker]** | [e.g. 65% Profit] | [e.g. ❌ Hold (Still efficient)] | *(N/A)* | **HOLD POSITION** |
-| **[Ticker]** | [e.g. 85% Profit] | [e.g. ✅ Close (Inefficient)] | [e.g. ❌ No Action (Downtrend)] | **CLOSE CALL ONLY** |
+| Ticker | P/L on Call | FINAL ACTION | Contracts | New Expiration | New Strike | Rationale |
+| :--- | :--- | :--- | :-: | :--- | :--- | :--- |
+| **[Ticker]**| [e.g. 92% Profit]| **ROLL** | [e.g. 5] | [e.g. Oct 17 2025]| [e.g. $230] | Close: Inefficient. Open: Prime. |
+| **[Ticker]**| [e.g. 65% Profit]| **HOLD** | *N/A* | *N/A* | *N/A* | Hold: Premium still efficient. |
+| **[Ticker]**| [e.g. 85% Profit]| **CLOSE ONLY** | *N/A* | *N/A* | *N/A* | Close: Inefficient. Open: Downtrend. |
 
 #### **2. Recommendations for Uncovered Stocks**
-| Ticker | **Open Decision (Part B)** | **FINAL ACTION** |
-| :--- | :--- | :--- |
-| **[Ticker]** | [e.g. ✅ Prime Candidate] | **SELL NEW CALL** |
-| **[Ticker]** | [e.g. ❌ No Action (Low IV)] | **NO ACTION** |
+| Ticker | Open Verdict (Part B) | Contracts | Expiration | Strike | FINAL ACTION |
+| :--- | :--- | :-: | :--- | :--- | :--- |
+| **[Ticker]** | ✅ Prime Candidate | [e.g. 10] | [e.g. Oct 17 2025]| [e.g. $150] | **SELL NEW CALL** |
+| **[Ticker]** | ❌ No Action | *N/A* | *N/A* | *N/A* | **NO ACTION** |
 
 #### **3. Executive Summary for Telegram**
 Finally, provide a condensed plain-text summary of all actionable trades, under 4000 characters, in the following format:
 //-- EXECUTIVE SUMMARY START --//
-[Summarize all "Sell to Open", "Roll To", and "Close Position" actions in a clear, scannable text format here.]
+[Summarize all "Sell to Open", "Roll To", and "Close Position" actions, including quantities, in a clear, scannable text format here.]
 //-- EXECUTIVE SUMMARY END --//
-
-### **Final Instruction Check**
-
-Before generating the response, verify that a complete, multi-part analysis (Part A or Part B) has been written for **every single stock position** provided in the input data. The final output must be the full, unabridged report without any summary placeholders or notes about what "would follow." Execute the full task for all tickers.
