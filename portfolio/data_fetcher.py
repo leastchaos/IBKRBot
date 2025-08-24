@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from ib_async import IB, Contract, Forex, Stock, Ticker
+from ib_async import IB, Contract, Forex, Stock
 import pandas as pd
 import logging
 
@@ -294,19 +294,3 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
     print(df.head())
     df["MarketPrice"] = df["MarketPrice"].fillna(df["AvgCost"] / df["Multiplier"])
     return df
-
-
-if __name__ == "__main__":
-    ib_client = IB()
-    ib_client.connect("127.0.0.1", 7496, clientId=1, readonly=True)
-    ib_client.reqMarketDataType(4)
-    contract = Contract(
-        symbol="9988",
-        secType="STK",
-        exchange="",
-        currency="HKD",
-    )
-    balance = fetch_balance(ib_client)
-    print(balance)
-    position = fetch_positions(ib_client)
-    print(position)
