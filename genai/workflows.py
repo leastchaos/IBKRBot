@@ -115,4 +115,5 @@ WORKFLOW_REGISTRY: dict[TaskType, Callable[..., bool]] = {
     TaskType.PORTFOLIO_REVIEW: perform_portfolio_review,
     TaskType.COVERED_CALL_REVIEW: perform_portfolio_review,
     TaskType.OTB_COVERED_CALL_REVIEW: perform_portfolio_review,
+    TaskType.RISK_REVIEW: perform_portfolio_review,
 }

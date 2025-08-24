@@ -50,6 +50,9 @@ def _create_start_menu(update: Update) -> InlineKeyboardMarkup:
                     "Trigger OTB Covered Call Review",
                     callback_data="trigger_otb_covered_call",
                 ),
+                InlineKeyboardButton(
+                    "Trigger Risk Review", callback_data="trigger_risk_review"
+                ),
             ],
             [
                 InlineKeyboardButton(
@@ -325,6 +328,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             TaskType.OTB_COVERED_CALL_REVIEW,
             "✅ OTB covered call review task has been queued.",
         )
+    elif command == "trigger_risk_review":
+        await _handle_admin_task_creation(
+            update,
+            TaskType.RISK_REVIEW,
+            "✅ Risk review task has been queued.",
+        )
     elif command == "trigger_daily":
         await trigger_daily_command(update, context)
     elif command == "delete_all_unprocessed":
@@ -346,6 +355,9 @@ async def _queue_daily_reviews(context: ContextTypes.DEFAULT_TYPE) -> None:
     )
     db.queue_task(
         task_type=TaskType.COVERED_CALL_REVIEW, requested_by="system:daily_job"
+    )
+    db.queue_task(
+        task_type=TaskType.RISK_REVIEW, requested_by="system:daily_job"
     )
     logging.info("Daily scheduled review tasks queued.")
 
@@ -373,6 +385,7 @@ def main() -> None:
     db.queue_task(
         task_type=TaskType.COVERED_CALL_REVIEW, requested_by="system:startup"
     )
+    db.queue_task(task_type=TaskType.RISK_REVIEW, requested_by="system:startup")
     logging.info("...startup tasks queued.")
 
     # Schedule daily tasks

@@ -106,7 +106,7 @@ def _dispatch_new_task(state: WorkerState):
         return
 
     success = False
-    if task_type in [TaskType.PORTFOLIO_REVIEW, TaskType.COVERED_CALL_REVIEW, TaskType.OTB_COVERED_CALL_REVIEW]:
+    if task_type in [TaskType.PORTFOLIO_REVIEW, TaskType.COVERED_CALL_REVIEW, TaskType.OTB_COVERED_CALL_REVIEW, TaskType.RISK_REVIEW]:
         success = workflow_func(browser, prompt, state.config.drive.portfolio_sheet_url)
     elif task_type in [TaskType.TACTICAL_REVIEW]:
         success = workflow_func(browser, prompt, company_name)
