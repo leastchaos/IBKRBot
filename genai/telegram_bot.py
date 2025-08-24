@@ -374,6 +374,10 @@ async def _queue_daily_reviews(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles unknown commands."""
+    if not update.message:
+        logging.error("Unknown command received without a message.")
+        return
     await update.message.reply_text(
         "⛔️ Unknown command. Please try again.",
         parse_mode="Markdown",

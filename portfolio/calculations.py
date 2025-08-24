@@ -16,7 +16,7 @@ class PositionRow(TypedDict):
     SecType: str
     Multiplier: float
     Strike: float
-    Right: str
+    Right: Literal["C", "P"]
     UnderlyingSymbol: str
     MarketPrice: float
     TargetPrice: float

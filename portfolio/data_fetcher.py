@@ -116,9 +116,9 @@ def fetch_historical_prices(
 
 def fetch_currency_rate(
     ib_client: IB, currency: str, base_currency: str = "SGD"
-) -> float:
+) -> float | None:
     if currency == base_currency:
-        return 1
+        return 1.0
     forex_contract = Forex(f"{currency}{base_currency}")
     bars = ib_client.reqHistoricalData(
         forex_contract,
@@ -154,7 +154,7 @@ def fetch_iv_rank_percentile(ib_client: IB, contract: Contract) -> tuple[float, 
         useRTH=False,
     )
     if not bars:
-        return -1, -1
+        return -1.0, -1.0
     min_iv = min(bars, key=lambda bar: bar.close)
     max_iv = max(bars, key=lambda bar: bar.close)
     current_iv = bars[-1].close
@@ -175,35 +175,40 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
 
     unique_stocks = [
         Stock(get_underlying_symbol(pos.contract.symbol), pos.contract.exchange, pos.contract.currency)
-        for pos in positions
+        for pos in positions if pos.contract
     ]
     qualified_stocks = ib_client.qualifyContracts(*unique_stocks)
     # unclear why individual contract able to get model greeks while all at once could not hence this was switched to single
     ib_client.reqMarketDataType(2)
     tickers = ib_client.reqTickers(*qualified_contracts)
-    stock_tickers = ib_client.reqTickers(*qualified_stocks)
+    stock_tickers = ib_client.reqTickers(*[s for s in qualified_stocks if s])
     ib_client.reqMarketDataType(4)
     tickers_backup = ib_client.reqTickers(*qualified_contracts)
-    stock_tickers_backup = ib_client.reqTickers(*qualified_stocks)
+    stock_tickers_backup = ib_client.reqTickers(*[s for s in qualified_stocks if s])
+    
     stock_tickers_dict = {
-        get_underlying_symbol(stock_ticker.contract.symbol): stock_ticker for stock_ticker in stock_tickers
+        get_underlying_symbol(stock_ticker.contract.symbol): stock_ticker 
+        for stock_ticker in stock_tickers if stock_ticker and stock_ticker.contract
     }
     stock_tickers_backup_dict = {
         get_underlying_symbol(stock_ticker_backup.contract.symbol): stock_ticker_backup
-        for stock_ticker_backup in stock_tickers_backup
+        for stock_ticker_backup in stock_tickers_backup if stock_ticker_backup and stock_ticker_backup.contract
     }
     iv_rank_percentile_dict = {
-        get_underlying_symbol(stock_ticker.contract.symbol): fetch_iv_rank_percentile(
-            ib_client, stock_ticker.contract
+        get_underlying_symbol(stock.symbol): fetch_iv_rank_percentile(
+            ib_client, stock
         )
-        for stock_ticker in stock_tickers
+        for stock in qualified_stocks if stock
     }
     for pos, ticker, ticker_backup in zip(positions, tickers, tickers_backup):
         contract = pos.contract
+        if not contract:
+            continue
+            
         contracts.append(contract)
         unique_currencies.add(contract.currency)
         delta, gamma, theta, vega, iv, pvDividend = 1, 0, 0, 0, 0, 0
-        iv_rank, iv_percentile = iv_rank_percentile_dict.get(get_underlying_symbol(contract.symbol), (-1, -1))
+        iv_rank, iv_percentile = iv_rank_percentile_dict.get(get_underlying_symbol(contract.symbol), (-1.0, -1.0))
         model_greeks = (
             ticker.modelGreeks if ticker.modelGreeks else ticker_backup.modelGreeks
         )
@@ -252,6 +257,15 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
             }
             save_cache(model_greeks_cache)  # Save updated cache
         multiplier = contract.multiplier if contract.multiplier != "" else 1
+        
+        underlying_price = None
+        underlying_symbol = get_underlying_symbol(contract.symbol)
+        
+        if underlying_symbol in stock_tickers_dict and stock_tickers_dict[underlying_symbol]:
+            underlying_price = stock_tickers_dict[underlying_symbol].marketPrice()
+        if not underlying_price and underlying_symbol in stock_tickers_backup_dict and stock_tickers_backup_dict[underlying_symbol]:
+            underlying_price = stock_tickers_backup_dict[underlying_symbol].marketPrice()
+
         position_data.append(
             {
                 "Account": pos.account,
@@ -270,7 +284,7 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "Strike": getattr(contract, "strike", None),
                 "Right": getattr(contract, "right", None),
                 "Multiplier": float(multiplier),
-                "MarketPrice": ticker.marketPrice() or ticker_backup.marketPrice(),
+                "MarketPrice": ticker.marketPrice() if ticker else None or (ticker_backup.marketPrice() if ticker_backup else None),
                 "Delta": delta,
                 "Gamma": gamma,
                 "Theta": theta,
@@ -279,9 +293,8 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
                 "PVDividend": pvDividend,
                 "IVRank_52W": iv_rank,
                 "IVPercentile_52W": iv_percentile,
-                "RiskFreeRate": RISK_FREE_RATES[contract.currency],
-                "UnderlyingPrice": stock_tickers_dict[get_underlying_symbol(contract.symbol)].marketPrice()
-                or stock_tickers_backup_dict[get_underlying_symbol(contract.symbol)].marketPrice(),
+                "RiskFreeRate": RISK_FREE_RATES.get(contract.currency),
+                "UnderlyingPrice": underlying_price,
             }
         )
     logger.info("Positions fetched successfully.")
@@ -294,3 +307,20 @@ def fetch_positions(ib_client: IB, base_currency: str = "SGD") -> pd.DataFrame:
     print(df.head())
     df["MarketPrice"] = df["MarketPrice"].fillna(df["AvgCost"] / df["Multiplier"])
     return df
+
+
+if __name__ == "__main__":
+    ib_client = IB()
+    ib_client.connect("127.0.0.1", 7496, clientId=1, readonly=True)
+    ib_client.reqMarketDataType(4)
+    contract = Contract(
+        symbol="9988",
+        secType="STK",
+        exchange="",
+        currency="HKD",
+    )
+    balance = fetch_balance(ib_client)
+    print(balance)
+    position = fetch_positions(ib_client)
+    print(position)
+    
