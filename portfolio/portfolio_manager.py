@@ -1,120 +1,134 @@
 import logging
 import pandas as pd
-from ib_async import IB
+from ib_async import IB, Contract
+from typing import List, cast
+
 from . import data_fetcher, calculations, sheet
-# --- FIX: Import cast for explicit type casting ---
-from typing import cast
+from .models import Position, MarketData, ContractDetails, PositionRow
 
 logger = logging.getLogger()
 
-
 class PortfolioManager:
-    def __init__(self, ib_client: IB, workbook_name: str, position_sheet: str, balance_sheet: str, scenario_sheet: str):
-        self.ib_client = ib_client
+    """
+    Orchestrates the fetching, processing, and storing of portfolio data
+    across multiple Google Sheets for raw and processed data.
+    """
+    def __init__(
+        self,
+        ib_client_frozen: IB,
+        ib_client_delayed: IB,
+        workbook_name: str,
+        positions_sheet: str,
+        contracts_sheet: str,
+        market_data_sheet: str,
+        combined_sheet: str,
+        balance_sheet: str,
+        scenario_sheet: str,
+        base_currency: str = "SGD",
+    ):
+        self.ib_client_frozen = ib_client_frozen
+        self.ib_client_delayed = ib_client_delayed
         self.workbook_name = workbook_name
-        self.position_sheet = position_sheet
+        self.positions_sheet = positions_sheet
+        self.contracts_sheet = contracts_sheet
+        self.market_data_sheet = market_data_sheet
+        self.combined_sheet = combined_sheet
         self.balance_sheet = balance_sheet
         self.scenario_sheet = scenario_sheet
+        self.base_currency = base_currency
+
+    def _run_calculation_pipeline(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Runs a structured pipeline of calculations on the combined DataFrame."""
+        records = [cast(PositionRow, row) for row in df.to_dict('records')]
+
+        df["positionType"] = [calculations.determine_position_type(row) for row in records]
+        df["marketValue"] = df["marketPrice"] * df["position"] * df["multiplier"] * df["forexRate"]
+        
+        records = [cast(PositionRow, row) for row in df.to_dict('records')]
+        df["initialMaxRisk"] = [calculations.calculate_initial_risk(row) for row in records]
+        df["currentMaxRisk"] = [calculations.calculate_current_risk(row) for row in records]
+        df["intrinsicValue"] = [calculations.calculate_intrinsic_value(row) for row in records]
+
+        records = [cast(PositionRow, row) for row in df.to_dict('records')]
+        df["worstCaseRisk"] = [calculations.calculate_worst_case_risk(row) for row in records]
+        df["targetProfit"] = [calculations.calculate_target_profit(row) for row in records]
+        df["timeValue"] = df["marketValue"] - df["intrinsicValue"]
+
+        return df
 
     def update_portfolio_data(self):
         """
-        Orchestrates the fetching, processing, and saving of portfolio data.
+        Orchestrates the full workflow of fetching, processing, and saving portfolio data.
         """
-        logger.info("Starting portfolio data update...")
+        logger.info("--- Starting Portfolio Data Update ---")
         try:
-            # 1. Fetch data
-            positions_df = data_fetcher.fetch_positions(self.ib_client)
-            balance_df = data_fetcher.fetch_balance(self.ib_client)
+            # --- Stage 1: Fetch and Save Raw Data ---
+            logger.info("Stage 1: Fetching and saving raw data...")
+            positions, contract_details, original_contracts = data_fetcher.fetch_positions_and_contracts(self.ib_client_frozen)
+            balance_df = data_fetcher.fetch_balance(self.ib_client_frozen)
+
+            if not positions:
+                logger.warning("No positions found. Clearing sheets and aborting update.")
+                sheet.set_sheet_data(self.workbook_name, self.positions_sheet, pd.DataFrame())
+                sheet.set_sheet_data(self.workbook_name, self.contracts_sheet, pd.DataFrame())
+                sheet.set_sheet_data(self.workbook_name, self.market_data_sheet, pd.DataFrame())
+                sheet.set_sheet_data(self.workbook_name, self.combined_sheet, pd.DataFrame())
+                return
+
+            positions_df = pd.DataFrame([vars(p) for p in positions])
+            contracts_df = pd.DataFrame([vars(c) for c in contract_details])
+            
+            market_data = data_fetcher.fetch_market_data(self.ib_client_frozen, self.ib_client_delayed, original_contracts)
+            market_data_df = pd.DataFrame([vars(md) for md in market_data])
+
+            sheet.set_sheet_data(self.workbook_name, self.positions_sheet, positions_df)
+            sheet.set_sheet_data(self.workbook_name, self.contracts_sheet, contracts_df)
+            sheet.set_sheet_data(self.workbook_name, self.market_data_sheet, market_data_df)
+            sheet.set_sheet_data(self.workbook_name, self.balance_sheet, balance_df)
+            logger.info("Successfully saved raw data to Google Sheets.")
+
+            # --- Stage 2: Read, Combine, and Process Data ---
+            logger.info("Stage 2: Reading and processing data...")
+            pos_df = sheet.get_sheet_data(self.workbook_name, self.positions_sheet)
+            con_df = sheet.get_sheet_data(self.workbook_name, self.contracts_sheet)
+            mkt_df = sheet.get_sheet_data(self.workbook_name, self.market_data_sheet)
             scenario_df = sheet.get_sheet_data(self.workbook_name, self.scenario_sheet)
 
-            # 2. Process data
-            processed_positions_df = self._process_positions(positions_df, scenario_df)
+            if pos_df.empty or con_df.empty or mkt_df.empty:
+                logger.warning("One of the raw data sheets is empty after reading. Aborting processing.")
+                sheet.set_sheet_data(self.workbook_name, self.combined_sheet, pd.DataFrame())
+                return
 
-            # 3. Save data
-            sheet.set_sheet_data(self.workbook_name, self.position_sheet, processed_positions_df)
-            sheet.set_sheet_data(self.workbook_name, self.balance_sheet, balance_df)
+            for df_name, df in [("Positions", pos_df), ("Contracts", con_df), ("Market Data", mkt_df)]:
+                if 'conId' not in df.columns:
+                     raise KeyError(f"Critical Error: 'conId' column is missing from the '{df_name}' sheet.")
+                df['conId'] = pd.to_numeric(df['conId'])
 
-            logger.info("Portfolio data update completed successfully.")
+            combined_df = pd.merge(pos_df, con_df, on="conId", how="left")
+            combined_df = pd.merge(combined_df, mkt_df, on="conId", how="left")
+            
+            unique_currencies = combined_df["currency"].unique()
+            forex_rates = {
+                curr: data_fetcher.fetch_currency_rate(self.ib_client_delayed, curr, self.base_currency)
+                for curr in unique_currencies
+            }
+            combined_df["forexRate"] = combined_df["currency"].map(forex_rates)
+            combined_df["riskFreeRate"] = combined_df["currency"].map(data_fetcher.RISK_FREE_RATES)
+
+            if not scenario_df.empty:
+                scenario_df['underlyingSymbol'] = scenario_df['underlyingSymbol'].astype(str)
+                combined_df = combined_df.merge(scenario_df, left_on="symbol", right_on="underlyingSymbol", how="left")
+            else:
+                combined_df["targetPrice"] = 0.0
+            
+            combined_df.rename(columns={'quantity': 'position'}, inplace=True)
+            
+            final_df = self._run_calculation_pipeline(combined_df)
+
+            # --- Stage 3: Save Final Processed View ---
+            logger.info("Stage 3: Saving combined and calculated data...")
+            sheet.set_sheet_data(self.workbook_name, self.combined_sheet, final_df)
+
+            logger.info("--- Portfolio data update completed successfully. ---")
         except Exception as e:
             logger.exception(f"An error occurred during portfolio update: {e}")
-
-    def _process_positions(self, positions_df: pd.DataFrame, scenario_df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Applies all the calculation functions to the positions DataFrame.
-        """
-        logger.info("Processing positions data...")
-        if positions_df.empty:
-            logger.warning("Positions DataFrame is empty. Skipping processing.")
-            return positions_df
-            
-        positions_df['Symbol'] = positions_df['Symbol'].astype(str)
-        if not scenario_df.empty:
-            scenario_df['UnderlyingSymbol'] = scenario_df['UnderlyingSymbol'].astype(str)
-            # Merge scenario prices into positions_df
-            positions_df = positions_df.merge(
-                scenario_df,
-                left_on="Symbol",
-                right_on="UnderlyingSymbol",
-                how="left",
-            )
-        else:
-            # Add scenario columns if the sheet is empty to prevent key errors
-            positions_df["TargetPrice"] = 0
-            positions_df["UnderlyingSymbol"] = ""
-
-        # Convert dataframe to a list of dictionaries for type-safe processing
-        position_records = positions_df.to_dict('records')
-
-        positions_df["StockEquivalentMovement"] = (
-            positions_df["Delta"] * positions_df["Position"] * positions_df["Multiplier"]
-        )
-        # --- FIX: Cast each 'row' to the PositionRow type ---
-        positions_df["PositionType"] = [calculations.determine_position_type(cast(calculations.PositionRow, row)) for row in position_records]
-
-        # Refresh records after adding a new column that is a dependency for other calcs
-        position_records = positions_df.to_dict('records')
-        
-        positions_df["WorstCaseStockMovement"] = (
-            positions_df["Position"]
-            * positions_df["Multiplier"]
-            * positions_df["PositionType"].isin(["Stock"])
-            - positions_df["PositionType"].isin(["Short Put"])
-            * positions_df["Position"]
-            * positions_df["Multiplier"]
-        )
-        positions_df["InitialMaxRisk"] = [calculations.calculate_initial_risk(cast(calculations.PositionRow, row)) for row in position_records]
-        positions_df["CurrentMaxRisk"] = [calculations.calculate_current_risk(cast(calculations.PositionRow, row)) for row in position_records]
-        
-        # Refresh records again
-        position_records = positions_df.to_dict('records')
-
-        positions_df["WorstCaseRisk"] = [calculations.calculate_worst_case_risk(cast(calculations.PositionRow, row)) for row in position_records]
-        positions_df["TargetProfit"] = [calculations.calculate_target_profit(cast(calculations.PositionRow, row)) for row in position_records]
-        positions_df["Value_At_Risk_99%"] = [calculations.calculate_var(cast(calculations.PositionRow, row), 0.01) for row in position_records]
-        positions_df["Value_At_Risk_40%"] = [calculations.calculate_var(cast(calculations.PositionRow, row), 0.6) for row in position_records]
-        positions_df["Value_At_Risk_20%"] = [calculations.calculate_var(cast(calculations.PositionRow, row), 0.8) for row in position_records]
-        positions_df["Value_At_Gain_20%"] = [calculations.calculate_var(cast(calculations.PositionRow, row), 1.2) for row in position_records]
-        positions_df["Value_At_Gain_40%"] = [calculations.calculate_var(cast(calculations.PositionRow, row), 1.4) for row in position_records]
-        positions_df["StrikePositions"] = positions_df["Strike"] * positions_df["Position"]
-        positions_df["CostBasis"] = (
-            positions_df["AvgCost"]
-            * positions_df["Position"]
-            * positions_df["ForexRate"]
-        )
-        positions_df["MarketValue"] = (
-            positions_df["MarketPrice"]
-            * positions_df["Position"]
-            * positions_df["Multiplier"]
-            * positions_df["ForexRate"]
-        )
-
-        # Refresh records one last time for the final calculations
-        position_records = positions_df.to_dict('records')
-
-        positions_df["InstrinsicValue"] = [calculations.calculate_instrinsic_value(cast(calculations.PositionRow, row)) for row in position_records]
-        positions_df["TimeValue"] = (
-            positions_df["MarketValue"] - positions_df["InstrinsicValue"]
-        )
-
-        logger.info("Positions data processed successfully.")
-        return positions_df
