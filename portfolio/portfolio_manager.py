@@ -170,17 +170,17 @@ class PortfolioManager:
             )
 
             if not scenario_df.empty:
-                scenario_df["underlyingSymbol"] = scenario_df[
-                    "underlyingSymbol"
+                scenario_df["symbol"] = scenario_df[
+                    "symbol"
                 ].astype(str)
                 combined_df = combined_df.merge(
                     scenario_df,
                     left_on="symbol",
-                    right_on="underlyingSymbol",
+                    right_on="symbol",
                     how="left",
                 )
             else:
-                combined_df["targetPrice"] = 0.0
+                combined_df["underlyingTargetPrice"] = 0.0
 
             combined_df.rename(columns={"quantity": "position"}, inplace=True)
 
@@ -193,3 +193,4 @@ class PortfolioManager:
             logger.info("--- Portfolio data update completed successfully. ---")
         except Exception as e:
             logger.exception(f"An error occurred during portfolio update: {e}")
+        

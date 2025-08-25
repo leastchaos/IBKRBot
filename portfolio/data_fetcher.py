@@ -1,20 +1,28 @@
 import logging
 from typing import Dict, List, Tuple
-from ib_async import IB, Contract, Forex, Stock
+from ib_async import IB, Contract, Forex, Stock, Ticker, OptionComputation
 import pandas as pd
 from datetime import datetime
 from dataclasses import fields
+import math
 
-from portfolio.models import Position, MarketData, ContractDetails, SyntheticGreeks 
+from portfolio.models import (
+    Position,
+    MarketData,
+    ContractDetails,
+    SyntheticGreeks,
+)
 
 logger = logging.getLogger()
-
 
 
 # --- Constants ---
 RISK_FREE_RATES = {"HKD": 0.03032, "USD": 0.0453, "SGD": 0.02559}
 SPECIAL_SYMBOL_MAP = {"BABA2": "BABA"}
 EXCHANGE_OVERRIDES = {"HKD": "SEHK", "SGD": "SGX", "USD": "NYSE"}
+
+
+# --- Helper Functions ---
 
 
 def _get_underlying_symbol(symbol: str) -> str:
@@ -113,6 +121,113 @@ def _create_detailed_contract_list(
     return contract_details, all_contracts_for_market_data
 
 
+def _get_qualified_underlyings(ib_client: IB, contracts: List[Contract]) -> List[Stock]:
+    """Finds and qualifies all unique underlying stocks from a list of contracts."""
+    unique_stock_tuples = {
+        (_get_underlying_symbol(c.symbol), c.exchange, c.currency)
+        for c in contracts
+        if c
+    }
+    underlying_stocks = [
+        Stock(symbol, ex, curr) for symbol, ex, curr in unique_stock_tuples
+    ]
+    return ib_client.qualifyContracts(*underlying_stocks)
+
+
+def _fetch_underlying_data(
+    ib_client: IB, underlyings: List[Stock]
+) -> Tuple[Dict[str, Ticker], Dict[str, Tuple[float, float]]]:
+    """Fetches market tickers and IV rank/percentile for a list of underlyings."""
+    tickers = {}
+    iv_data = {}
+    ib_client.reqMarketDataType(3)  # Use Delayed data for underlyings
+
+    for stock in underlyings:
+        if not stock:
+            continue
+        ticker = ib_client.reqMktData(stock, "", False, False)
+        ib_client.sleep(0.1)  # Small sleep to allow data to arrive
+        tickers[stock.symbol] = ticker
+        iv_data[stock.symbol] = fetch_iv_rank_percentile(ib_client, stock)
+
+    return tickers, iv_data
+
+
+def _fetch_single_contract_market_data(
+    ib_client: IB, contract: Contract
+) -> Tuple[float | None, OptionComputation | SyntheticGreeks | None]:
+    """
+    Attempts to fetch market price and greeks for a single contract, trying all data types.
+    """
+    market_price = None
+    greeks = None
+
+    for data_type_id in range(1, 5):  # Try market data types 1 through 4
+        ib_client.reqMarketDataType(data_type_id)
+        ticker = ib_client.reqMktData(contract, "", False, False)
+        ib_client.sleep(0.1)
+
+        price = ticker.marketPrice()
+        if price and not math.isnan(price):
+            market_price = price
+
+        if contract.secType == "STK":
+            greeks = SyntheticGreeks(delta=1.0)
+        elif ticker.modelGreeks:
+            greeks = ticker.modelGreeks
+
+        if market_price is not None and greeks is not None:
+            logging.info(f"Market data for {contract.symbol} found with type {data_type_id}.")
+            return market_price, greeks
+
+    return market_price, greeks
+
+
+def _build_market_data_object(
+    contract: Contract,
+    market_price: float | None,
+    greeks: OptionComputation | SyntheticGreeks | None,
+    underlying_tickers: Dict[str, Ticker],
+    iv_data: Dict[str, Tuple[float, float]],
+    date_updated: datetime | None,
+) -> MarketData:
+    """Constructs the final MarketData object from all fetched components."""
+    underlying_symbol = _get_underlying_symbol(contract.symbol)
+    underlying_ticker = underlying_tickers.get(underlying_symbol)
+    iv_rank, iv_percentile = iv_data.get(underlying_symbol, (-1.0, -1.0))
+
+    delta, gamma, theta, vega, iv = -1.0, -1.0, -1.0, -1.0, -1.0
+    pv_dividend = 0.0
+
+    if greeks:
+        delta = greeks.delta if greeks.delta is not None else -1.0
+        gamma = greeks.gamma if greeks.gamma is not None else -1.0
+        theta = greeks.theta if greeks.theta is not None else -1.0
+        vega = greeks.vega if greeks.vega is not None else -1.0
+        iv = greeks.impliedVol if greeks.impliedVol is not None else -1.0
+        pv_dividend = greeks.pvDividend if greeks.pvDividend is not None else 0.0
+
+    return MarketData(
+        conId=contract.conId,
+        marketPrice=market_price or 0.0,
+        underlyingPrice=(
+            underlying_ticker.marketPrice() if underlying_ticker else None
+        ),
+        delta=delta,
+        gamma=gamma,
+        theta=theta,
+        vega=vega,
+        iv=iv,
+        pvDividend=pv_dividend,
+        ivRank_52w=iv_rank,
+        ivPercentile_52w=iv_percentile,
+        date_updated=date_updated,
+    )
+
+
+# --- Main Public Functions ---
+
+
 def fetch_positions_and_contracts(
     ib_client: IB,
 ) -> Tuple[List[Position], List[ContractDetails], List[Contract]]:
@@ -121,26 +236,14 @@ def fetch_positions_and_contracts(
     including underlying contracts for options.
     """
     logger.info("Fetching core positions and contract details...")
-
     positions, raw_contracts = _extract_positions_and_raw_contracts(ib_client)
-
     contract_details, all_contracts = _create_detailed_contract_list(
         ib_client, raw_contracts
     )
-
     logger.info(
         f"Fetched {len(positions)} positions and {len(contract_details)} unique contracts (including underlyings)."
     )
     return positions, contract_details, all_contracts
-
-
-# Mapping of Market Data Type IDs to a descriptive name
-MARKET_DATA_TYPES = {
-    1: "Real-time",
-    2: "Frozen",
-    3: "Delayed",
-    4: "Delayed-frozen",
-}
 
 
 def fetch_market_data(
@@ -149,15 +252,7 @@ def fetch_market_data(
     existing_market_data: pd.DataFrame | None = None,
 ) -> List[MarketData]:
     """
-    Fetches market data for contracts by iterating through all market data types
-    to ensure model greeks and market price are populated, using a single IB client.
-
-    Args:
-        ib_client: The single IB client instance.
-        contracts: A list of ib_async.Contract objects to fetch market data for.
-
-    Returns:
-        A list of MarketData objects.
+    Orchestrates fetching market data for a list of contracts.
     """
     logger.info(f"Fetching market data for {len(contracts)} contracts...")
     if not contracts:
@@ -165,126 +260,55 @@ def fetch_market_data(
 
     if existing_market_data is None:
         existing_market_data = pd.DataFrame()
-    # Use the single client for all qualification and data requests
+
     qualified_contracts = ib_client.qualifyContracts(*contracts)
-
-    unique_stock_tuples = {
-        (_get_underlying_symbol(c.symbol), c.exchange, c.currency)
-        for c in qualified_contracts
-        if c
-    }
-    underlying_stocks = [
-        Stock(symbol, ex, curr) for symbol, ex, curr in unique_stock_tuples
-    ]
-    qualified_underlyings = ib_client.qualifyContracts(*underlying_stocks)
-
-    # Fetch underlying data once
-    underlying_tickers = {}
-    ib_client.reqMarketDataType(3)  # Use Delayed (3) for underlying data
-    for s in qualified_underlyings:
-        if s:
-            ticker = ib_client.reqMktData(s, "", False, False)
-            ib_client.sleep(0.1)
-            underlying_tickers[s.symbol] = ticker
-
-    # Fetch IV Rank/Percentile once
-    iv_rank_map = {
-        s.symbol: fetch_iv_rank_percentile(ib_client, s)
-        for s in qualified_underlyings
-        if s
-    }
+    qualified_underlyings = _get_qualified_underlyings(ib_client, qualified_contracts)
+    underlying_tickers, iv_data = _fetch_underlying_data(
+        ib_client, qualified_underlyings
+    )
 
     market_data_list = []
     market_data_fields = {f.name for f in fields(MarketData)}
 
     for contract in qualified_contracts:
-        market_price = None
-        greeks = None
-        data_found = False
-
-        # Iteratively try each market data type from 1 (Real-time) to 4 (Delayed-frozen)
-        for data_type_id, data_type_name in MARKET_DATA_TYPES.items():
-            ib_client.reqMarketDataType(data_type_id)
-            ticker = ib_client.reqMktData(contract, "", False, False)
-            ib_client.sleep(0.1)
-
-            # Check if we have a valid market price and Greeks from this request
-            if ticker.marketPrice():
-                market_price = ticker.marketPrice()
-
-            if contract.secType == "STK":
-                greeks = SyntheticGreeks(delta=1.0)
-            elif ticker.modelGreeks:
-                greeks = ticker.modelGreeks
-
-            # If both are found, we can break the inner loop and proceed
-            if market_price is not None and greeks is not None:
-                logger.info(
-                    f"Market data for {contract.symbol} found with {data_type_name} data."
-                )
-                data_found = True
-                break
+        market_price, greeks = _fetch_single_contract_market_data(ib_client, contract)
+        existing_row = pd.DataFrame()
+        if not existing_market_data.empty:
+            existing_row = existing_market_data[
+                existing_market_data["conId"] == contract.conId
+            ]
         date_updated = None
-        if data_found:
+        if market_price is not None and greeks is not None:
             date_updated = datetime.now()
         else:
             logger.warning(
-                f"Could not fetch complete market data for {contract.symbol} after all attempts."
+                f"Could not fetch complete market data for {contract.symbol}. Checking for existing data..."
             )
-            if not existing_market_data.empty:
-                existing_row = existing_market_data[
-                    existing_market_data["conId"] == contract.conId
-                ]
-                if not existing_row.empty:
-                    logger.info(f"Using existing market data for {contract.symbol}.")
-                    row_dict = existing_row.to_dict("records")[0]
-                    filtered_dict = {
-                        str(k): v
-                        for k, v in row_dict.items()
-                        if str(k) in market_data_fields
-                    }
-                    market_data_list.append(MarketData(**filtered_dict))
-                    continue
-
-        underlying_symbol = _get_underlying_symbol(contract.symbol)
-        underlying_ticker = underlying_tickers.get(underlying_symbol)
-        iv_rank, iv_percentile = iv_rank_map.get(underlying_symbol, (-1.0, -1.0))
-        # Determine default greek values
-        delta = -1.0
-        gamma = -1.0
-        theta = -1.0
-        vega = -1.0
-        iv = -1.0
-
-        if greeks:
-            delta = greeks.delta if greeks.delta is not None else -1.0
-            gamma = greeks.gamma if greeks.gamma is not None else -1.0
-            theta = greeks.theta if greeks.theta is not None else -1.0
-            vega = greeks.vega if greeks.vega is not None else -1.0
-            iv = greeks.impliedVol if greeks.impliedVol is not None else -1.0
-
-        market_data_list.append(
-            MarketData(
-                conId=contract.conId,
-                marketPrice=market_price or 0.0,
-                underlyingPrice=(
-                    underlying_ticker.marketPrice() if underlying_ticker else None
-                ),
-                delta=delta,
-                gamma=gamma,
-                theta=theta,
-                vega=vega,
-                iv=iv,
-                pvDividend=(
-                    greeks.pvDividend
-                    if greeks and greeks.pvDividend is not None
-                    else 0.0
-                ),
-                ivRank_52w=iv_rank,
-                ivPercentile_52w=iv_percentile,
-                date_updated=date_updated,
+            if not existing_row.empty:
+                logger.info(f"Using existing market data for {contract.symbol}.")
+                row_dict = existing_row.to_dict("records")[0]
+                filtered_dict = {
+                    str(k): v
+                    for k, v in row_dict.items()
+                    if str(k) in market_data_fields
+                }
+                market_data_list.append(MarketData(**filtered_dict))
+                continue  # Skip to the next contract
+        # If fetch fails but we have an old price, use it.
+        if market_price is None and not existing_row.empty:
+            market_price = existing_row.iloc[0]["marketPrice"]
+            logger.info(
+                f"Using existing market price {market_price} for {contract.symbol}."
             )
+        market_data_obj = _build_market_data_object(
+            contract,
+            market_price,
+            greeks,
+            underlying_tickers,
+            iv_data,
+            date_updated,
         )
+        market_data_list.append(market_data_obj)
 
     logger.info("Market data fetched successfully.")
     return market_data_list

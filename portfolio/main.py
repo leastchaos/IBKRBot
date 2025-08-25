@@ -43,7 +43,7 @@ def main(
 ) -> None:
     setup_logger()
     # Create two separate clients with unique IDs
-    ib_client = connect_to_ib(host, port, clientId=101)
+    ib_client = connect_to_ib(host, port, clientId=1001)
 
     portfolio_manager = PortfolioManager(
         ib_client=ib_client,
@@ -61,7 +61,7 @@ def main(
             if not ib_client.isConnected():
                 logger.info(f"IB connection lost for client {ib_client.client.clientId}. Reconnecting...")
                 ib_client.disconnect()
-                ib_client = connect_to_ib(host, port, clientId=random.randint(10000,99999))
+                ib_client = connect_to_ib(host, port, clientId=random.randint(100,999))
                 portfolio_manager.ib_client = ib_client
 
             portfolio_manager.update_portfolio_data()
