@@ -3,23 +3,12 @@ from typing import Dict, List, Tuple
 from ib_async import IB, Contract, Forex, Stock
 import pandas as pd
 from datetime import datetime
-from dataclasses import fields, dataclass
+from dataclasses import fields
 
-from portfolio.models import Position, MarketData, ContractDetails
+from portfolio.models import Position, MarketData, ContractDetails, SyntheticGreeks 
 
 logger = logging.getLogger()
 
-
-@dataclass
-class SyntheticGreeks:
-    """A synthetic structure to hold greeks for non-option instruments like stocks."""
-
-    delta: float = 0.0
-    gamma: float = 0.0
-    theta: float = 0.0
-    vega: float = 0.0
-    impliedVol: float = 0.0
-    pvDividend: float = 0.0
 
 
 # --- Constants ---

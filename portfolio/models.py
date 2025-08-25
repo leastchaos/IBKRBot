@@ -92,3 +92,15 @@ class MarketData:
     ivRank_52w: float = -1.0
     ivPercentile_52w: float = -1.0
     date_updated: datetime | None = None
+
+
+@dataclass
+class SyntheticGreeks:
+    """A synthetic structure to hold greeks for non-option instruments like stocks."""
+
+    delta: float = 0.0
+    gamma: float = 0.0
+    theta: float = 0.0
+    vega: float = 0.0
+    impliedVol: float = 0.0
+    pvDividend: float = 0.0
