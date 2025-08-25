@@ -58,12 +58,11 @@ def main(
 
     while True:
         try:
-            # Check and reconnect both clients if necessary
-            for client in [ib_client]:
-                if not client.isConnected():
-                    logger.info(f"IB connection lost for client {client.client.clientId}. Reconnecting...")
-                    client.disconnect()
-                    connect_to_ib(host, port, clientId=random.randint(10000,99999))
+            if not ib_client.isConnected():
+                logger.info(f"IB connection lost for client {ib_client.client.clientId}. Reconnecting...")
+                ib_client.disconnect()
+                ib_client = connect_to_ib(host, port, clientId=random.randint(10000,99999))
+                portfolio_manager.ib_client = ib_client
 
             portfolio_manager.update_portfolio_data()
             wait_for_next_update(300)
