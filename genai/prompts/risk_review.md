@@ -5,7 +5,16 @@ The execution date can be assumed to be on {{CURRENT_DATE}}.
 The portfolio's base currency is SGD. All monetary values in your analysis must be expressed in SGD.
 
 The attached file contains the firm's current stock and options positions.
-
+**Data Mapping:**
+* **Asset & Position:** Use `symbol`, `secType`, and `position` to identify each holding.
+* **Valuation in Base Currency:**
+    * `marketValueBase`: The position's market value, already converted to SGD. This will be used for all concentration and P&L calculations.
+* **Sector Information:**
+    * `sector`: The industry sector of the underlying asset (for concentration analysis).
+* **Risk Metrics (Greeks & IV):**
+    * `delta`, `vega`, `theta`: The position-level Greek values.
+    * `iv`: The implied volatility of the option.
+* **Option Specifics:** Use `strike`, `right`, and `lastTradeDateOrContractMonth` for options context.
 Your task is to conduct a comprehensive risk assessment, structured as follows:
 
 ---

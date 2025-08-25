@@ -4,7 +4,7 @@ import logging
 from typing import Callable
 
 from genai.browser_actions import Browser
-from genai.constants import TaskType
+from genai.constants import GEMINI_URL, TaskType
 from genai.database.api import get_latest_report_info
 
 # This is the registry
@@ -22,6 +22,8 @@ def perform_deep_research(browser: Browser, prompt: str) -> bool:
         True if the task was initiated successfully, False otherwise.
     """
     try:
+        logging.info("Starting Deep Research workflow.")
+        browser.navigate_to_url(GEMINI_URL)
         browser.navigate_to_deep_research_prompt()
         browser.enter_prompt_and_submit(prompt)
         browser.click_start_research()
@@ -62,6 +64,7 @@ def perform_tactical_research(
             )
             return False
         logging.info(f"Starting daily monitor workflow. Attaching doc: {report_url}")
+        browser.navigate_to_url(GEMINI_URL)
         browser.navigate_to_deep_research_prompt()
         browser.attach_drive_file(report_url)
         browser.enter_prompt_and_submit(prompt)
@@ -90,7 +93,7 @@ def perform_portfolio_review(browser: Browser, prompt: str, sheet_url: str) -> b
     """
     try:
         logging.info("Starting portfolio review workflow.")
-        # Note the different order of operations for this workflow
+        browser.navigate_to_url(GEMINI_URL)
         browser.attach_drive_file(sheet_url)
         browser.navigate_to_deep_research_prompt()
         browser.enter_prompt_and_submit(prompt)

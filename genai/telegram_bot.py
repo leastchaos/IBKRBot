@@ -57,11 +57,14 @@ def _create_start_menu(update: Update) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    "Delete All Completed Tasks", callback_data="delete_all_completed"
-                ),
-                InlineKeyboardButton(
                     "Delete All Unprocessed Tasks", callback_data="delete_all_unprocessed"
                 ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "Trigger All Portfolio Reviews",
+                    callback_data="trigger_all_portfolio_reviews",
+                )
             ],
         ]
         keyboard.extend(admin_keyboard)
@@ -349,6 +352,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await trigger_daily_command(update, context)
     elif command == "delete_all_unprocessed":
         await delete_all_unprocessed_tasks(update, context)
+    elif command == "trigger_all_portfolio_reviews":
+        await _handle_admin_task_creation(
+            update,
+            TaskType.PORTFOLIO_REVIEW,
+            "✅ Portfolio review tasks for portfolio have been queued.",
+        )
+        await _handle_admin_task_creation(
+            update,
+            TaskType.UNDERVALUED_SCREENER,
+            "✅ Undervalued screener tasks for portfolio have been queued.",
+        )
+        await _handle_admin_task_creation(
+            update,
+            TaskType.COVERED_CALL_REVIEW,
+            "✅ Covered call review tasks for portfolio have been queued.",
+        )
+        await _handle_admin_task_creation(
+            update,
+            TaskType.RISK_REVIEW,
+            "✅ Risk review tasks for portfolio have been queued.",
+        )
     else:
         await query.edit_message_text(
             text=f"Action '{command}' is not yet implemented."
@@ -374,6 +398,10 @@ async def _queue_daily_reviews(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles unknown commands."""
+    if not update.message:
+        logging.error("Unknown command received without a message.")
+        return
     await update.message.reply_text(
         "⛔️ Unknown command. Please try again.",
         parse_mode="Markdown",
@@ -391,19 +419,19 @@ def main() -> None:
     application = Application.builder().token(config.telegram.token).build()
 
     # --- Queue startup and daily tasks ---
-    # Queue tasks on startup
-    logging.info("Queueing startup tasks (Screener, Portfolio, Covered Call)...")
-    db.queue_task(
-        task_type=TaskType.PORTFOLIO_REVIEW, requested_by="system:startup"
-    )
-    db.queue_task(
-        task_type=TaskType.UNDERVALUED_SCREENER, requested_by="system:startup"
-    )
-    db.queue_task(
-        task_type=TaskType.COVERED_CALL_REVIEW, requested_by="system:startup"
-    )
-    db.queue_task(task_type=TaskType.RISK_REVIEW, requested_by="system:startup")
-    logging.info("...startup tasks queued.")
+    # # Queue tasks on startup
+    # logging.info("Queueing startup tasks (Screener, Portfolio, Covered Call)...")
+    # db.queue_task(
+    #     task_type=TaskType.PORTFOLIO_REVIEW, requested_by="system:startup"
+    # )
+    # db.queue_task(
+    #     task_type=TaskType.UNDERVALUED_SCREENER, requested_by="system:startup"
+    # )
+    # db.queue_task(
+    #     task_type=TaskType.COVERED_CALL_REVIEW, requested_by="system:startup"
+    # )
+    # db.queue_task(task_type=TaskType.RISK_REVIEW, requested_by="system:startup")
+    # logging.info("...startup tasks queued.")
 
     # Schedule daily tasks
     if application.job_queue:

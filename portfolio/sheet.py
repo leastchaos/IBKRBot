@@ -31,7 +31,7 @@ def get_sheet_data(
     #     logger.error(f"Failed to retrieve data from {workbook} {sheet_name}")
     #     return pd.DataFrame()
     # remove empty rows
-    print(dataframe.head())
+    logging.info(dataframe.head())
     dataframe = dataframe.dropna(how="all")
     # remove empty cols
     dataframe = dataframe.dropna(axis=1, how="all")
