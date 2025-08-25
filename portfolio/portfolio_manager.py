@@ -1,10 +1,10 @@
 import logging
 import pandas as pd
-from ib_async import IB, Contract
-from typing import List, cast
+from ib_async import IB
+from typing import cast
 
-from . import data_fetcher, calculations, sheet
-from .models import Position, MarketData, ContractDetails, PositionRow
+from portfolio import data_fetcher, calculations, sheet
+from portfolio.models import PositionRow
 
 logger = logging.getLogger()
 
@@ -15,8 +15,7 @@ class PortfolioManager:
     """
     def __init__(
         self,
-        ib_client_frozen: IB,
-        ib_client_delayed: IB,
+        ib_client: IB,
         workbook_name: str,
         positions_sheet: str,
         contracts_sheet: str,
@@ -26,8 +25,7 @@ class PortfolioManager:
         scenario_sheet: str,
         base_currency: str = "SGD",
     ):
-        self.ib_client_frozen = ib_client_frozen
-        self.ib_client_delayed = ib_client_delayed
+        self.ib_client = ib_client
         self.workbook_name = workbook_name
         self.positions_sheet = positions_sheet
         self.contracts_sheet = contracts_sheet
@@ -42,7 +40,9 @@ class PortfolioManager:
         records = [cast(PositionRow, row) for row in df.to_dict('records')]
 
         df["positionType"] = [calculations.determine_position_type(row) for row in records]
-        df["marketValue"] = df["marketPrice"] * df["position"] * df["multiplier"] * df["forexRate"]
+        if "marketPrice" not in df.columns:
+            df["marketPrice"] = 0.0
+        df["marketValueBase"] = df["marketPrice"] * df["position"] * df["multiplier"] * df["forexRate"]
         
         records = [cast(PositionRow, row) for row in df.to_dict('records')]
         df["initialMaxRisk"] = [calculations.calculate_initial_risk(row) for row in records]
@@ -52,7 +52,7 @@ class PortfolioManager:
         records = [cast(PositionRow, row) for row in df.to_dict('records')]
         df["worstCaseRisk"] = [calculations.calculate_worst_case_risk(row) for row in records]
         df["targetProfit"] = [calculations.calculate_target_profit(row) for row in records]
-        df["timeValue"] = df["marketValue"] - df["intrinsicValue"]
+        df["timeValue"] = df["marketValueBase"] - df["intrinsicValue"]
 
         return df
 
@@ -64,8 +64,8 @@ class PortfolioManager:
         try:
             # --- Stage 1: Fetch and Save Raw Data ---
             logger.info("Stage 1: Fetching and saving raw data...")
-            positions, contract_details, original_contracts = data_fetcher.fetch_positions_and_contracts(self.ib_client_frozen)
-            balance_df = data_fetcher.fetch_balance(self.ib_client_frozen)
+            positions, contract_details, original_contracts = data_fetcher.fetch_positions_and_contracts(self.ib_client)
+            balance_df = data_fetcher.fetch_balance(self.ib_client)
 
             if not positions:
                 logger.warning("No positions found. Clearing sheets and aborting update.")
@@ -78,7 +78,7 @@ class PortfolioManager:
             positions_df = pd.DataFrame([vars(p) for p in positions])
             contracts_df = pd.DataFrame([vars(c) for c in contract_details])
             
-            market_data = data_fetcher.fetch_market_data(self.ib_client_frozen, self.ib_client_delayed, original_contracts)
+            market_data = data_fetcher.fetch_market_data(self.ib_client, original_contracts)
             market_data_df = pd.DataFrame([vars(md) for md in market_data])
 
             sheet.set_sheet_data(self.workbook_name, self.positions_sheet, positions_df)
@@ -109,7 +109,7 @@ class PortfolioManager:
             
             unique_currencies = combined_df["currency"].unique()
             forex_rates = {
-                curr: data_fetcher.fetch_currency_rate(self.ib_client_delayed, curr, self.base_currency)
+                curr: data_fetcher.fetch_currency_rate(self.ib_client, curr, self.base_currency)
                 for curr in unique_currencies
             }
             combined_df["forexRate"] = combined_df["currency"].map(forex_rates)

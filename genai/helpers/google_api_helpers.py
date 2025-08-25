@@ -174,4 +174,4 @@ if __name__ == "__main__":
             if not content:
                 logging.warning("Halting process: content could not be fetched.")
             else:
-                logging.info(f"Content fetched successfully for Doc ID: {doc_id} \n{content[:100]}...")  # Print first 100 chars
+                logging.info(f"Content fetched successfully for Doc ID: {doc_id} \n{content[:100]}...")

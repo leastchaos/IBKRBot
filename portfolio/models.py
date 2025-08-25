@@ -38,7 +38,7 @@ class PositionRow(TypedDict):
 
     # --- Keys added during calculation pipeline ---
     positionType: str
-    marketValue: float
+    marketValueBase: float
     initialMaxRisk: Optional[float]
     currentMaxRisk: Optional[float]
     intrinsicValue: float
@@ -66,6 +66,7 @@ class ContractDetails:
     strike: float
     right: str
     multiplier: float
+    underlyingConId: Optional[int] = None # New field
 
 @dataclass
 class MarketData:
@@ -73,11 +74,11 @@ class MarketData:
     conId: int
     marketPrice: float = 0.0
     underlyingPrice: float | None = None
-    delta: float = 0.0
-    gamma: float = 0.0
-    theta: float = 0.0
-    vega: float = 0.0
-    iv: float = 0.0
-    pvDividend: float = 0.0
+    delta: float = -1.0
+    gamma: float = -1.0
+    theta: float = -1.0
+    vega: float = -1.0
+    iv: float = -1.0
+    pvDividend: float = -1.0
     ivRank_52w: float = -1.0
     ivPercentile_52w: float = -1.0

@@ -3,14 +3,14 @@ from typing import Dict, List, Tuple
 from ib_async import IB, Contract, Forex, Stock
 import pandas as pd
 
-from .models import Position, MarketData, ContractDetails
+from portfolio.models import Position, MarketData, ContractDetails
 
 logger = logging.getLogger()
 
 # --- Constants ---
 RISK_FREE_RATES = {"HKD": 0.03032, "USD": 0.0453, "SGD": 0.02559}
 SPECIAL_SYMBOL_MAP = {"BABA2": "BABA"}
-
+EXCHANGE_OVERRIDES = {"HKD": "SEHK", "SGD": "SGX", "USD": "NYSE"}
 def _get_underlying_symbol(symbol: str) -> str:
     """Returns the correct underlying symbol, handling special cases."""
     return SPECIAL_SYMBOL_MAP.get(symbol, symbol)
@@ -47,17 +47,25 @@ def fetch_positions_and_contracts(ib_client: IB) -> Tuple[List[Position], List[C
                 )
             )
             if contract.conId not in seen_con_ids:
+                underlying_conId = None
+                # qualify Stock of the underlying if option
+                if contract.secType == "OPT":
+                    underlying_symbol = _get_underlying_symbol(contract.symbol)
+                    underlying_contract = Stock(underlying_symbol, EXCHANGE_OVERRIDES.get(contract.currency, contract.exchange), contract.currency)
+                    ib_client.qualifyContracts(underlying_contract)
+                    underlying_conId = underlying_contract.conId if underlying_contract.conId else None
                 contract_details.append(
                     ContractDetails(
                         conId=contract.conId,
                         symbol=_get_underlying_symbol(contract.symbol),
                         secType=contract.secType,
                         currency=contract.currency,
-                        exchange=contract.exchange,
+                        exchange=EXCHANGE_OVERRIDES.get(contract.currency, contract.exchange),
                         lastTradeDateOrContractMonth=getattr(contract, "lastTradeDateOrContractMonth", None),
                         strike=getattr(contract, "strike", 0.0),
                         right=getattr(contract, "right", ''),
-                        multiplier=float(getattr(contract, 'multiplier', 1) or 1)
+                        multiplier=float(getattr(contract, 'multiplier', 1) or 1),
+                        underlyingConId=underlying_conId
                     )
                 )
                 seen_con_ids.add(contract.conId)
@@ -65,14 +73,21 @@ def fetch_positions_and_contracts(ib_client: IB) -> Tuple[List[Position], List[C
     logger.info(f"Fetched {len(positions)} positions and {len(contract_details)} unique contracts.")
     return positions, contract_details, original_contracts
 
+# Mapping of Market Data Type IDs to a descriptive name
+MARKET_DATA_TYPES = {
+    1: "Real-time",
+    2: "Frozen",
+    3: "Delayed",
+    4: "Delayed-frozen",
+}
 
-def fetch_market_data(ib_client_frozen: IB, ib_client_delayed: IB, contracts: List[Contract]) -> List[MarketData]:
+def fetch_market_data(ib_client: IB, contracts: List[Contract]) -> List[MarketData]:
     """
-    Fetches market data for contracts individually to ensure model greeks are populated.
+    Fetches market data for contracts by iterating through all market data types
+    to ensure model greeks and market price are populated, using a single IB client.
 
     Args:
-        ib_client_frozen: IB client with market data type set to 2 (Frozen).
-        ib_client_delayed: IB client with market data type set to 4 (Delayed).
+        ib_client: The single IB client instance.
         contracts: A list of ib_async.Contract objects to fetch market data for.
 
     Returns:
@@ -82,42 +97,59 @@ def fetch_market_data(ib_client_frozen: IB, ib_client_delayed: IB, contracts: Li
     if not contracts:
         return []
 
-    qualified_contracts = ib_client_frozen.qualifyContracts(*contracts)
+    # Use the single client for all qualification and data requests
+    qualified_contracts = ib_client.qualifyContracts(*contracts)
     
     unique_stock_tuples = {(_get_underlying_symbol(c.symbol), c.exchange, c.currency) for c in qualified_contracts if c}
     underlying_stocks = [Stock(symbol, ex, curr) for symbol, ex, curr in unique_stock_tuples]
-    qualified_underlyings = ib_client_delayed.qualifyContracts(*underlying_stocks)
+    qualified_underlyings = ib_client.qualifyContracts(*underlying_stocks)
 
-    ib_client_delayed.reqMarketDataType(4)
-    underlying_tickers = {
-        s.symbol: t for s in qualified_underlyings if s and (t := ib_client_delayed.reqMktData(s, "", False, False))
-    }
+    # Fetch underlying data once
+    underlying_tickers = {}
+    ib_client.reqMarketDataType(3)  # Use Delayed (3) for underlying data
+    for s in qualified_underlyings:
+        if s:
+            ticker = ib_client.reqMktData(s, "", False, False)
+            ib_client.sleep(0.1)
+            underlying_tickers[s.symbol] = ticker
     
-    iv_rank_map = {s.symbol: fetch_iv_rank_percentile(ib_client_delayed, s) for s in qualified_underlyings if s}
+    # Fetch IV Rank/Percentile once
+    iv_rank_map = {s.symbol: fetch_iv_rank_percentile(ib_client, s) for s in qualified_underlyings if s}
 
     market_data_list = []
+    
     for contract in qualified_contracts:
-        ib_client_frozen.reqMarketDataType(2)
-        ticker_frozen = ib_client_frozen.reqMktData(contract, "", False, False)
-        ib_client_frozen.sleep(0.1)
-
-        greeks = ticker_frozen.modelGreeks
-        market_price = ticker_frozen.marketPrice()
-
-        if not greeks or not market_price:
-            ib_client_delayed.reqMarketDataType(4)
-            ticker_delayed = ib_client_delayed.reqMktData(contract, "", False, False)
-            ib_client_delayed.sleep(0.1)
-            greeks = greeks or ticker_delayed.modelGreeks
-            market_price = market_price or ticker_delayed.marketPrice() or 0.0
-
+        market_price = None
+        greeks = None
+        
+        # Iteratively try each market data type from 1 (Real-time) to 4 (Delayed-frozen)
+        for data_type_id, data_type_name in MARKET_DATA_TYPES.items():
+            ib_client.reqMarketDataType(data_type_id)
+            ticker = ib_client.reqMktData(contract, "", False, False)
+            ib_client.sleep(0.1)
+            
+            # Check if we have a valid market price and Greeks from this request
+            if ticker.marketPrice():
+                market_price = ticker.marketPrice()
+            if ticker.modelGreeks:
+                greeks = ticker.modelGreeks
+            
+            # If both are found, we can break the inner loop and proceed
+            if market_price is not None and greeks is not None:
+                logger.info(f"Market data for {contract.symbol} found with {data_type_name} data.")
+                break
+        
+        # If no data found after all attempts, log a warning
+        if market_price is None or greeks is None:
+            logger.warning(f"Could not fetch complete market data for {contract.symbol} after all attempts.")
+            
         underlying_symbol = _get_underlying_symbol(contract.symbol)
         underlying_ticker = underlying_tickers.get(underlying_symbol)
         iv_rank, iv_percentile = iv_rank_map.get(underlying_symbol, (-1.0, -1.0))
         
         market_data_list.append(MarketData(
             conId=contract.conId,
-            marketPrice=market_price,
+            marketPrice=market_price or 0.0,
             underlyingPrice=underlying_ticker.marketPrice() if underlying_ticker else None,
             delta=greeks.delta if greeks and greeks.delta is not None else (1.0 if contract.secType == 'STK' else 0.0),
             gamma=greeks.gamma if greeks and greeks.gamma is not None else 0.0,
@@ -131,7 +163,6 @@ def fetch_market_data(ib_client_frozen: IB, ib_client_delayed: IB, contracts: Li
         
     logger.info("Market data fetched successfully.")
     return market_data_list
-
 
 def fetch_balance(ib_client: IB) -> pd.DataFrame:
     """Fetches all account-related data from TWS."""

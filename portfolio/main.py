@@ -43,12 +43,10 @@ def main(
 ) -> None:
     setup_logger()
     # Create two separate clients with unique IDs
-    ib_client_frozen = connect_to_ib(host, port, clientId=101)
-    ib_client_delayed = connect_to_ib(host, port, clientId=102)
+    ib_client = connect_to_ib(host, port, clientId=101)
 
     portfolio_manager = PortfolioManager(
-        ib_client_frozen=ib_client_frozen,
-        ib_client_delayed=ib_client_delayed,
+        ib_client=ib_client,
         workbook_name=workbook_name,
         positions_sheet=positions_sheet,
         contracts_sheet=contracts_sheet,
@@ -61,11 +59,11 @@ def main(
     while True:
         try:
             # Check and reconnect both clients if necessary
-            for client in [ib_client_frozen, ib_client_delayed]:
+            for client in [ib_client]:
                 if not client.isConnected():
                     logger.info(f"IB connection lost for client {client.client.clientId}. Reconnecting...")
                     client.disconnect()
-                    connect_to_ib(host, port, clientId=client.client.clientId)
+                    connect_to_ib(host, port, clientId=random.randint(10000,99999))
 
             portfolio_manager.update_portfolio_data()
             wait_for_next_update(300)
@@ -78,8 +76,7 @@ def main(
             logger.info("Retrying in 5 minutes...")
             wait_for_next_update(300)
             
-    ib_client_frozen.disconnect()
-    ib_client_delayed.disconnect()
+    ib_client.disconnect()
 
 
 if __name__ == "__main__":

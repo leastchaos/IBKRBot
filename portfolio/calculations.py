@@ -113,13 +113,13 @@ def calculate_current_risk(row: PositionRow) -> float | None:
     right = row['right']
     symbol = row['symbol']
 
-    if secType == "OPT" and right == "P" and position > 0 and symbol != "TSLA":
+    if secType == "OPT" and right == "P" and position > 0:
         return -position * strike * multiplier * forexRate + position * marketPrice * forexRate
     if position > 0:
         return marketPrice * position * multiplier * forexRate
-    if secType == "OPT" and right == "P" and position < 0:
+    if secType == "OPT" and right == "P":
         return (-position * strike * multiplier + position * marketPrice * multiplier) * forexRate
-    if secType == "OPT" and right == "C" and position < 0:
+    if secType == "OPT" and right == "C":
         return position * marketPrice * forexRate * multiplier
     return None
 
@@ -167,7 +167,7 @@ def calculate_target_profit(row: PositionRow) -> float:
 def calculate_intrinsic_value(row: PositionRow) -> float:
     """Calculates the intrinsic value of an option."""
     if row['secType'] == "STK":
-        return row['marketValue']
+        return row['marketValueBase']
         
     underlying_price = row['underlyingPrice']
     if not isinstance(underlying_price, (int, float)):
