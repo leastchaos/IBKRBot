@@ -3,11 +3,24 @@ from typing import Dict, List, Tuple
 from ib_async import IB, Contract, Forex, Stock
 import pandas as pd
 from datetime import datetime
-from dataclasses import fields
+from dataclasses import fields, dataclass
 
 from portfolio.models import Position, MarketData, ContractDetails
 
 logger = logging.getLogger()
+
+
+@dataclass
+class SyntheticGreeks:
+    """A synthetic structure to hold greeks for non-option instruments like stocks."""
+
+    delta: float = 0.0
+    gamma: float = 0.0
+    theta: float = 0.0
+    vega: float = 0.0
+    impliedVol: float = 0.0
+    pvDividend: float = 0.0
+
 
 # --- Constants ---
 RISK_FREE_RATES = {"HKD": 0.03032, "USD": 0.0453, "SGD": 0.02559}
@@ -209,7 +222,10 @@ def fetch_market_data(
             # Check if we have a valid market price and Greeks from this request
             if ticker.marketPrice():
                 market_price = ticker.marketPrice()
-            if ticker.modelGreeks:
+
+            if contract.secType == "STK":
+                greeks = SyntheticGreeks(delta=1.0)
+            elif ticker.modelGreeks:
                 greeks = ticker.modelGreeks
 
             # If both are found, we can break the inner loop and proceed
@@ -251,18 +267,13 @@ def fetch_market_data(
         vega = -1.0
         iv = -1.0
 
-        if contract.secType == "STK":
-            delta = 1.0
-            gamma = 0.0
-            theta = 0.0
-            vega = 0.0
-            iv = 0.0
-        elif greeks:
+        if greeks:
             delta = greeks.delta if greeks.delta is not None else -1.0
             gamma = greeks.gamma if greeks.gamma is not None else -1.0
             theta = greeks.theta if greeks.theta is not None else -1.0
             vega = greeks.vega if greeks.vega is not None else -1.0
             iv = greeks.impliedVol if greeks.impliedVol is not None else -1.0
+
         market_data_list.append(
             MarketData(
                 conId=contract.conId,
