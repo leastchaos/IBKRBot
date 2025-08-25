@@ -11,9 +11,15 @@ logger = logging.getLogger()
 
 # --- Calculation Functions ---
 
+
 def black_scholes_price(
-    S: float, K: float, T: float, r: float, sigma: float, pv_dividend: float = 0.0,
-    option_type: Literal["C", "P"] = "C"
+    S: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    pv_dividend: float = 0.0,
+    option_type: Literal["C", "P"] = "C",
 ) -> float:
     """Calculates the theoretical price of a European option."""
     if T <= 0:
@@ -32,43 +38,51 @@ def black_scholes_price(
 
 def calculate_var(row: PositionRow, price_factor: float) -> float:
     """Calculates the Value at Risk (VaR) for a position."""
-    underlying_price = row['underlyingPrice']
+    underlying_price = row["underlyingPrice"]
     if not isinstance(underlying_price, (int, float)):
         return 0.0
 
-    if row['secType'] == "STK":
+    if row["secType"] == "STK":
         delta = (underlying_price * price_factor) - underlying_price
-        return delta * row['position'] * row['multiplier'] * row['forexRate']
+        return delta * row["position"] * row["multiplier"] * row["forexRate"]
 
-    if row['secType'] == "OPT":
-        if row['right'] not in ('C', 'P'):
+    if row["secType"] == "OPT":
+        if row["right"] not in ("C", "P"):
             return 0.0
-            
-        expiry_str = str(row['lastTradeDateOrContractMonth'])
+
+        expiry_str = str(row["lastTradeDateOrContractMonth"])
         expiry = datetime.strptime(expiry_str, "%Y%m%d")
         days_to_expiration = max((expiry - datetime.today()).days / 365.0, 0)
 
         current_price = black_scholes_price(
-            S=underlying_price, K=row['strike'], T=days_to_expiration,
-            r=row['riskFreeRate'], sigma=row['iv'], pv_dividend=row['pvDividend'],
-            option_type=row['right']
+            S=underlying_price,
+            K=row["strike"],
+            T=days_to_expiration,
+            r=row["riskFreeRate"],
+            sigma=row["iv"],
+            pv_dividend=row["pvDividend"],
+            option_type=row["right"],
         )
         new_price = black_scholes_price(
-            S=underlying_price * price_factor, K=row['strike'], T=days_to_expiration,
-            r=row['riskFreeRate'], sigma=row['iv'], pv_dividend=row['pvDividend'],
-            option_type=row['right']
+            S=underlying_price * price_factor,
+            K=row["strike"],
+            T=days_to_expiration,
+            r=row["riskFreeRate"],
+            sigma=row["iv"],
+            pv_dividend=row["pvDividend"],
+            option_type=row["right"],
         )
         change = new_price - current_price
-        return change * row['position'] * row['multiplier'] * row['forexRate']
+        return change * row["position"] * row["multiplier"] * row["forexRate"]
 
     return 0.0
 
 
 def determine_position_type(row: PositionRow) -> str:
     """Determines the type of position (e.g., Stock, Long Call)."""
-    secType = row['secType']
-    position = row['position']
-    right = row['right']
+    secType = row["secType"]
+    position = row["position"]
+    right = row["right"]
 
     if secType == "STK":
         return "Stock"
@@ -82,43 +96,51 @@ def determine_position_type(row: PositionRow) -> str:
 
 def calculate_initial_risk(row: PositionRow) -> float | None:
     """Calculates the initial maximum risk for a position."""
-    position = row['position']
-    avgCost = row['avgCost']
-    forexRate = row['forexRate']
-    secType = row['secType']
-    multiplier = float(row.get('multiplier', 1.0) or 1.0)
-    strike = row['strike']
-    right = row['right']
-    symbol = row['symbol']
+    position = row["position"]
+    avgCost = row["avgCost"]
+    forexRate = row["forexRate"]
+    secType = row["secType"]
+    multiplier = float(row.get("multiplier", 1.0) or 1.0)
+    strike = row["strike"]
+    right = row["right"]
+    symbol = row["symbol"]
 
     if secType == "OPT" and right == "P" and position > 0 and symbol != "TSLA":
-        return -position * strike * multiplier * forexRate + position * avgCost * forexRate
+        return (
+            -position * strike * multiplier * forexRate + position * avgCost * forexRate
+        )
     if position > 0:
         return avgCost * position * forexRate
     if secType == "OPT" and right == "P" and position < 0:
-        return -position * strike * multiplier * forexRate + position * avgCost * forexRate
+        return (
+            -position * strike * multiplier * forexRate + position * avgCost * forexRate
+        )
     if secType == "OPT" and right == "C" and position < 0:
         return position * avgCost * forexRate
     return None
 
 
-def calculate_current_risk(row: PositionRow) -> float | None:
-    """Calculates the current maximum risk for a position."""
-    position = row['position']
-    marketPrice = row['marketPrice']
-    forexRate = row['forexRate']
-    secType = row['secType']
-    multiplier = float(row.get('multiplier', 1.0) or 1.0)
-    strike = row['strike']
-    right = row['right']
-    symbol = row['symbol']
+def calculate_notional_exposure(row: PositionRow) -> float | None:
+    """Calculates the current notional exposure for a position."""
+    position = row["position"]
+    marketPrice = row["marketPrice"]
+    forexRate = row["forexRate"]
+    secType = row["secType"]
+    multiplier = float(row.get("multiplier", 1.0) or 1.0)
+    strike = row["strike"]
+    right = row["right"]
 
     if secType == "OPT" and right == "P" and position > 0:
-        return -position * strike * multiplier * forexRate + position * marketPrice * forexRate
+        return (
+            -position * strike * multiplier * forexRate
+            + position * marketPrice * forexRate
+        )
     if position > 0:
         return marketPrice * position * multiplier * forexRate
     if secType == "OPT" and right == "P":
-        return (-position * strike * multiplier + position * marketPrice * multiplier) * forexRate
+        return (
+            -position * strike * multiplier + position * marketPrice * multiplier
+        ) * forexRate
     if secType == "OPT" and right == "C":
         return position * marketPrice * forexRate * multiplier
     return None
@@ -126,32 +148,34 @@ def calculate_current_risk(row: PositionRow) -> float | None:
 
 def calculate_worst_case_risk(row: PositionRow) -> float | None:
     """Calculates the worst-case scenario risk for a position."""
-    position = row['position']
-    marketPrice = row['marketPrice']
-    forexRate = row['forexRate']
-    secType = row['secType']
-    multiplier = float(row.get('multiplier', 1.0) or 1.0)
-    strike = row['strike']
-    right = row['right']
-    currentMaxRisk = row.get('currentMaxRisk', 0.0)
+    position = row["position"]
+    marketPrice = row["marketPrice"]
+    forexRate = row["forexRate"]
+    secType = row["secType"]
+    multiplier = float(row.get("multiplier", 1.0) or 1.0)
+    strike = row["strike"]
+    right = row["right"]
+    notionalExposure = row.get("notionalExposure", 0.0)
 
     if secType == "STK" and position > 0:
         return (marketPrice * 0.2) * position * forexRate
     if secType == "OPT" and right == "P" and position < 0:
-        return (-position * (strike * 0.2) * multiplier * forexRate) + (position * marketPrice * forexRate)
-    
-    return currentMaxRisk
+        return (
+            -position * (strike * 0.2) * multiplier * forexRate
+        ) + (position * marketPrice * forexRate)
+
+    return notionalExposure
 
 
 def calculate_target_profit(row: PositionRow) -> float:
     """Calculates the potential profit if the target price is reached."""
-    avgCost = row['avgCost']
-    position = row['position']
-    targetPrice = row.get('targetPrice', 0.0)
-    positionType = row['positionType']
-    strike = row['strike']
-    multiplier = float(row.get('multiplier', 1.0) or 1.0)
-    forexRate = row['forexRate']
+    avgCost = row["avgCost"]
+    position = row["position"]
+    targetPrice = row.get("targetPrice", 0.0)
+    positionType = row["positionType"]
+    strike = row["strike"]
+    multiplier = float(row.get("multiplier", 1.0) or 1.0)
+    forexRate = row["forexRate"]
 
     position_cost = avgCost * position * forexRate
     if positionType == "Stock":
@@ -161,26 +185,30 @@ def calculate_target_profit(row: PositionRow) -> float:
     if positionType in ["Short Call", "Short Put"]:
         return -position_cost
     if positionType == "Long Put":
-        return max(strike - targetPrice, 0) * position * multiplier * forexRate - position_cost
+        return (
+            max(strike - targetPrice, 0) * position * multiplier * forexRate
+            - position_cost
+        )
     return 0.0
+
 
 def calculate_intrinsic_value(row: PositionRow) -> float:
     """Calculates the intrinsic value of an option."""
-    if row['secType'] == "STK":
-        return row['marketValueBase']
-        
-    underlying_price = row['underlyingPrice']
+    if row["secType"] == "STK":
+        return row["marketValueBase"]
+
+    underlying_price = row["underlyingPrice"]
     if not isinstance(underlying_price, (int, float)):
         return 0.0
 
     return (
-        row['position']
-        * max(underlying_price - row['strike'], 0)
-        * row['multiplier']
-        * row['forexRate']
-        if row['right'] == "C"
-        else row['position']
-        * max(row['strike'] - underlying_price, 0)
-        * row['multiplier']
-        * row['forexRate']
+        row["position"]
+        * max(underlying_price - row["strike"], 0)
+        * row["multiplier"]
+        * row["forexRate"]
+        if row["right"] == "C"
+        else row["position"]
+        * max(row["strike"] - underlying_price, 0)
+        * row["multiplier"]
+        * row["forexRate"]
     )

@@ -43,7 +43,7 @@ class PositionRow(TypedDict):
     positionType: str
     marketValueBase: float
     initialMaxRisk: Optional[float]
-    currentMaxRisk: Optional[float]
+    notionalExposure: Optional[float]
     intrinsicValue: float
     worstCaseRisk: Optional[float]
     targetProfit: float

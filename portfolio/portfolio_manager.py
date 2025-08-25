@@ -41,7 +41,9 @@ class PortfolioManager:
         """Runs a structured pipeline of calculations on the combined DataFrame."""
         records = [cast(PositionRow, row) for row in df.to_dict("records")]
 
-        df["positionType"] = [calculations.determine_position_type(row) for row in records]
+        df["positionType"] = [
+            calculations.determine_position_type(row) for row in records
+        ]
         if "marketPrice" not in df.columns:
             df["marketPrice"] = 0.0
         df["marketValueBase"] = (
@@ -52,8 +54,8 @@ class PortfolioManager:
         df["initialMaxRisk"] = [
             calculations.calculate_initial_risk(row) for row in records
         ]
-        df["currentMaxRisk"] = [
-            calculations.calculate_current_risk(row) for row in records
+        df["notionalExposure"] = [
+            calculations.calculate_notional_exposure(row) for row in records
         ]
         df["intrinsicValue"] = [
             calculations.calculate_intrinsic_value(row) for row in records
@@ -86,7 +88,9 @@ class PortfolioManager:
             balance_df = data_fetcher.fetch_balance(self.ib_client)
 
             if not positions:
-                logger.warning("No positions found. Clearing sheets and aborting update.")
+                logger.warning(
+                    "No positions found. Clearing sheets and aborting update."
+                )
                 sheet.set_sheet_data(
                     self.workbook_name, self.positions_sheet, pd.DataFrame()
                 )
@@ -111,8 +115,12 @@ class PortfolioManager:
             )
             market_data_df = pd.DataFrame([vars(md) for md in market_data])
 
-            sheet.set_sheet_data(self.workbook_name, self.positions_sheet, positions_df)
-            sheet.set_sheet_data(self.workbook_name, self.contracts_sheet, contracts_df)
+            sheet.set_sheet_data(
+                self.workbook_name, self.positions_sheet, positions_df
+            )
+            sheet.set_sheet_data(
+                self.workbook_name, self.contracts_sheet, contracts_df
+            )
             sheet.set_sheet_data(
                 self.workbook_name, self.market_data_sheet, market_data_df
             )

@@ -3,6 +3,7 @@ from typing import Dict, List, Tuple
 from ib_async import IB, Contract, Forex, Stock
 import pandas as pd
 from datetime import datetime
+from dataclasses import fields
 
 from portfolio.models import Position, MarketData, ContractDetails
 
@@ -143,7 +144,7 @@ MARKET_DATA_TYPES = {
 def fetch_market_data(
     ib_client: IB,
     contracts: List[Contract],
-    existing_market_data: pd.DataFrame = None,
+    existing_market_data: pd.DataFrame | None = None,
 ) -> List[MarketData]:
     """
     Fetches market data for contracts by iterating through all market data types
@@ -160,6 +161,8 @@ def fetch_market_data(
     if not contracts:
         return []
 
+    if existing_market_data is None:
+        existing_market_data = pd.DataFrame()
     # Use the single client for all qualification and data requests
     qualified_contracts = ib_client.qualifyContracts(*contracts)
 
@@ -190,6 +193,7 @@ def fetch_market_data(
     }
 
     market_data_list = []
+    market_data_fields = {f.name for f in fields(MarketData)}
 
     for contract in qualified_contracts:
         market_price = None
@@ -222,21 +226,43 @@ def fetch_market_data(
             logger.warning(
                 f"Could not fetch complete market data for {contract.symbol} after all attempts."
             )
-            if existing_market_data is not None and not existing_market_data.empty:
+            if not existing_market_data.empty:
                 existing_row = existing_market_data[
                     existing_market_data["conId"] == contract.conId
                 ]
                 if not existing_row.empty:
                     logger.info(f"Using existing market data for {contract.symbol}.")
-                    market_data_list.append(
-                        MarketData(**existing_row.to_dict("records")[0])
-                    )
+                    row_dict = existing_row.to_dict("records")[0]
+                    filtered_dict = {
+                        str(k): v
+                        for k, v in row_dict.items()
+                        if str(k) in market_data_fields
+                    }
+                    market_data_list.append(MarketData(**filtered_dict))
                     continue
 
         underlying_symbol = _get_underlying_symbol(contract.symbol)
         underlying_ticker = underlying_tickers.get(underlying_symbol)
         iv_rank, iv_percentile = iv_rank_map.get(underlying_symbol, (-1.0, -1.0))
+        # Determine default greek values
+        delta = -1.0
+        gamma = -1.0
+        theta = -1.0
+        vega = -1.0
+        iv = -1.0
 
+        if contract.secType == "STK":
+            delta = 1.0
+            gamma = 0.0
+            theta = 0.0
+            vega = 0.0
+            iv = 0.0
+        elif greeks:
+            delta = greeks.delta if greeks.delta is not None else -1.0
+            gamma = greeks.gamma if greeks.gamma is not None else -1.0
+            theta = greeks.theta if greeks.theta is not None else -1.0
+            vega = greeks.vega if greeks.vega is not None else -1.0
+            iv = greeks.impliedVol if greeks.impliedVol is not None else -1.0
         market_data_list.append(
             MarketData(
                 conId=contract.conId,
@@ -244,19 +270,11 @@ def fetch_market_data(
                 underlyingPrice=(
                     underlying_ticker.marketPrice() if underlying_ticker else None
                 ),
-                delta=(
-                    greeks.delta
-                    if greeks and greeks.delta is not None
-                    else (1.0 if contract.secType == "STK" else 0.0)
-                ),
-                gamma=greeks.gamma if greeks and greeks.gamma is not None else 0.0,
-                theta=greeks.theta if greeks and greeks.theta is not None else 0.0,
-                vega=greeks.vega if greeks and greeks.vega is not None else 0.0,
-                iv=(
-                    greeks.impliedVol
-                    if greeks and greeks.impliedVol is not None
-                    else 0.0
-                ),
+                delta=delta,
+                gamma=gamma,
+                theta=theta,
+                vega=vega,
+                iv=iv,
                 pvDividend=(
                     greeks.pvDividend
                     if greeks and greeks.pvDividend is not None
