@@ -1,17 +1,19 @@
 Act as an expert-level options trading strategist and fundamental analyst. Your primary objective is to create a complete covered call action plan by analyzing my entire portfolio.
 
 **Core Philosophy:** Our management process is a distinct two-stage analysis. **First**, we evaluate an existing option contract on its own merits to decide if it should be closed early based on capital efficiency. **Second**, we independently analyze the underlying stock to decide if a new call should be written, waiting for a tactical entry signal. A "roll" is the logical outcome of deciding to close an old position and open a new one.
+
 **Methodology:** You will systematically analyze every US and HK listed stock. Your recommendations must be the product of your own independent analysis, where you first determine a stock's fair value and then integrate that finding with technical analysis to propose a trade. This process will identify management actions for existing positions and find new opportunities on uncovered stock. Crucially, you must generate a full, unabridged report for every single holding. Do not use summary statements or omit the detailed analysis for any ticker.
 
 **Assumptions:**
 * **Execution Date:** For all calculations, assume the current date is {{CURRENT_DATE}}.
 * **Commission Costs:** All trade recommendations and return calculations must factor in commission costs. Assume **$1.00 USD per US option contract** and **$30.00 HKD per HK option contract** for both opening and closing trades. A roll therefore incurs two commission charges.
-* **Portfolio Source:** Use `IBKRPositions.csv` as the primary source for all portfolio holdings.
+* **Portfolio Source:** Use the provided CSV data as the primary source for all portfolio holdings and pricing.
+* **Market Data:** Use `underlyingPrice` as the current stock price and `marketPrice` as the current option price directly from the provided file. You must still fetch all other external data (e.g., earnings dates, financials, news) from the web.
 
 **Data Mapping:**
-* **Stock Positions:** `SecType = 'STK'`. Cost basis is `AvgCost`. Your initial target price is `TargetPrice`.
-* **Existing Short Calls:** `SecType = 'OPT'`, `Right = 'C'`, `Position < 0`. The strike is `Strike`, expiration is `LastTradeDateOrContractMonth`, and the number of contracts is `Position`. The premium received is `AvgCost` (per contract). The number of stocks per contract is `Multiplier` (default to 100 if not specified).
-* **Market Data:** You must fetch the latest available stock price (`Current_Price`) and all other market data (IV, financials, etc.) from the web. Do not use price data from the provided files.
+* **Ticker Symbol:** Use `symbol` to identify the stock.
+* **Stock Positions:** `secType = 'STK'`. Cost basis is `avgCost`. Your initial target price is `underlyingTargetPrice`. The number of shares is `position`.
+* **Existing Short Calls:** `secType = 'OPT'`, `right = 'C'`, `position < 0`. The strike is `strike`, expiration is `lastTradeDateOrContractMonth`, and the number of contracts is `position`. The premium received is `avgCost` (per contract). The number of stocks per contract is `multiplier`.
 
 ---
 ### **Part A: Close-Decision Analysis (For Existing Short Calls)**
@@ -20,7 +22,7 @@ For every stock that is already covered by a short call, you will answer one que
 
 #### **1. Position Status Review**
 * **Ticker & Position:** State the Ticker, Days to Expiration (DTE), and the current Profit/Loss on the short call.
-* **Capital Efficiency:** Calculate the annualized return of the **remaining** premium: `(Remaining Premium per Share / Current Stock Price) * (365 / DTE)`.
+* **Capital Efficiency:** Calculate the annualized return of the **remaining** premium: `(marketPrice / underlyingPrice) * (365 / DTE)`.
 
 #### **2. "Close" Verdict & Rationale**
 Based on the review, provide one of two verdicts for the existing option:
@@ -43,12 +45,12 @@ For **every stock** in the portfolio (whether it's uncovered or its previous opt
 * **Ex-Dividend Date:** Identify the next ex-dividend date, if any, before the proposed expiration.
 * **Upcoming Catalysts:** Identify the date of the next earnings report and list any other imminent, high-impact catalysts.
 * **Fundamental Valuation:** Perform your own analysis to determine if the stock is Overvalued, Fairly Valued, or Undervalued. Your conclusion must be based on a synthesis of Growth Prospects, Profitability & Moat, and Relative Valuation. State your final valuation verdict and provide a concise, one-sentence rationale for it.
-* **Alignment with Target Price:** Compare the current stock price to the provided `TargetPrice`. Characterize the status (e.g., "Well below target," "Approaching target," "Target surpassed"). Based on your independent fundamental valuation, comment on whether this `TargetPrice` still appears reasonable, too conservative, or too optimistic in the current environment.
+* **Alignment with Target Price:** Compare the current stock price (`underlyingPrice`) to the provided `underlyingTargetPrice`. Characterize the status (e.g., "Well below target," "Approaching target," "Target surpassed"). Based on your independent fundamental valuation, comment on whether this `underlyingTargetPrice` still appears reasonable, too conservative, or too optimistic in the current environment.
 
 #### **2. Technical Analysis & Tactical Entry**
 * **Market Structure:** Characterize the stock's trend as **Established Uptrend, Range-Bound, Stabilizing Downtrend, or Active Downtrend.**
 * **Key Price Levels:** Identify several significant **support and resistance** levels (daily/weekly).
-* **Implied Volatility (IV):** State the current IV Rank (IVR).
+* **Implied Volatility (IV):** State the current IV Rank (IVR) by using the value from the `ivRank_52w` column.
 * **Tactical Entry Signal (Refined Logic):** Analyze the stock's current price to find a high-probability entry point. The rule is universal regardless of the market structure.
     * **✅ Favorable Entry:** The stock is currently testing a significant **resistance level** OR is in a technically **"overbought" condition** (e.g., RSI > 70). This is the ideal time to sell a call, as the probability of a short-term pause or pullback is elevated.
     * **❌ Unfavorable Entry:** The stock has just bounced from support, is oversold (e.g., RSI < 30), is in an active decline, or has just broken out above a key resistance with strong momentum.
@@ -71,8 +73,8 @@ If the verdict is Prime or Acceptable, determine the Strategic Path and proceed 
 * **Trade Metrics (Net of Commission):**
     * **Option Premium:** Current Bid/Ask spread and the Midpoint price.
     * **Net Premium Received:** `(Midpoint Price x Multiplier x Number of Contracts) - Commission`.
-    * **Breaken Price:** `Cost_Basis - (Net Premium Received per Share)`.
-    * **Return on Capital (RoC) (Annualized):** `(Net Premium per Share / Current Stock Price) * (365 / DTE)`.
+    * **Breakeven Price:** `Cost_Basis - (Net Premium Received per Share)`.
+    * **Return on Capital (RoC) (Annualized):** `(Net Premium per Share / underlyingPrice) * (365 / DTE)`.
     * **Return if Assigned:** `((Strike Price - Cost Basis) + Net Premium per Share) / Cost Basis`. (Label as "Mitigated Loss" if negative).
     * **Option Delta (Informational):** Provide the delta of the chosen option.
 
