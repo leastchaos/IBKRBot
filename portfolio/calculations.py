@@ -195,7 +195,14 @@ def calculate_target_profit(row: PositionRow) -> float:
 def calculate_intrinsic_value(row: PositionRow) -> float:
     """Calculates the intrinsic value of an option."""
     if row["secType"] == "STK":
-        return row["marketValueBase"]
+        # Calculate the intrinsic value (market value) directly to remove dependency
+        # on the order of column creation in the portfolio manager.
+        return (
+            row["marketPrice"]
+            * row["position"]
+            * float(row.get("multiplier", 1.0) or 1.0)
+            * row["forexRate"]
+        )
 
     underlying_price = row["underlyingPrice"]
     if not isinstance(underlying_price, (int, float)):
