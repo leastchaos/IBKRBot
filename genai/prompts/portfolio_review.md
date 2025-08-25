@@ -5,7 +5,14 @@ The execution date can be assumed to be on {{CURRENT_DATE}}.
 The attached file contains all current portfolio positions.
 
 Your analysis must be grouped by the underlying asset ticker. For each ticker, you will conduct the full analysis as detailed below.
-
+**Data Mapping:**
+* **Ticker Symbol:** Use `symbol` to identify the underlying asset.
+* **Security Type:** Use `secType` to differentiate 'STK' (stocks) from 'OPT' (options).
+* **Position Details:**
+    * `position`: The quantity of shares or contracts.
+    * `right`: The option right ('C' for Call, 'P' for Put).
+    * `strike`: The option's strike price.
+    * `lastTradeDateOrContractMonth`: The option's expiration date.
 ---
 
 ### **Part 1: Comprehensive Analysis by Underlying Asset**

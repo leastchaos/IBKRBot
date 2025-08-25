@@ -57,9 +57,6 @@ def _create_start_menu(update: Update) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    "Delete All Completed Tasks", callback_data="delete_all_completed"
-                ),
-                InlineKeyboardButton(
                     "Delete All Unprocessed Tasks", callback_data="delete_all_unprocessed"
                 ),
             ],
