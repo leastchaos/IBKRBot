@@ -121,7 +121,7 @@ def _create_detailed_contract_list(
     return contract_details, all_contracts_for_market_data
 
 
-def _get_qualified_underlyings(ib_client: IB, contracts: List[Contract]) -> List[Stock]:
+def _get_qualified_underlyings(ib_client: IB, contracts: List[Contract]) -> List[Contract]:
     """Finds and qualifies all unique underlying stocks from a list of contracts."""
     unique_stock_tuples = {
         (_get_underlying_symbol(c.symbol), c.exchange, c.currency)
@@ -135,7 +135,7 @@ def _get_qualified_underlyings(ib_client: IB, contracts: List[Contract]) -> List
 
 
 def _fetch_underlying_data(
-    ib_client: IB, underlyings: List[Stock]
+    ib_client: IB, underlyings: List[Contract]
 ) -> Tuple[Dict[str, Ticker], Dict[str, Tuple[float, float]]]:
     """Fetches market tickers and IV rank/percentile for a list of underlyings."""
     tickers = {}
